@@ -1,0 +1,14 @@
+import { useEffect, useState } from 'react'
+import { Link, Navigate } from 'react-router-dom'
+import { useAuth } from '../context/useAuth'
+import { resourceApi } from '../services/api'
+
+function MyResources() {
+  const { user, token, loading: authLoading } = useAuth(); const [items, setItems] = useState([]); const [page, setPage] = useState(1); const [pages, setPages] = useState(1); const [loading, setLoading] = useState(true); const [error, setError] = useState(false); const [pending, setPending] = useState('')
+  useEffect(() => { if (!token) return; let live = true; setLoading(true); resourceApi.mine(token, page).then((data) => { if (live) { setItems(data.resources || []); setPages(data.pagination?.pages || 1) } }).catch(() => live && setError(true)).finally(() => live && setLoading(false)); return () => { live = false } }, [token, page])
+  if (authLoading) return <section className="placeholder">Loading your account...</section>
+  if (!user || !token) return <Navigate to="/login" replace state={{ from: '/resources/my-resources' }} />
+  const remove = async (item) => { if (!window.confirm('Delete this resource?')) return; setPending(item._id); try { await resourceApi.remove(token, item._id); setItems((all) => all.filter((resource) => resource._id !== item._id)) } catch { setError(true) } finally { setPending('') } }
+  return <section className="resources-page"><div className="resources-heading"><div><p className="eyebrow">Your contributions</p><h1>My Resources</h1></div><Link className="primary-button" to="/resources/share">Share Resource</Link></div>{error && <p className="form-error" role="alert">Something went wrong. Please try again.</p>}{loading ? <div className="empty-state">Loading resources...</div> : items.length ? <div className="resource-grid">{items.map((item) => <article className="resource-card" key={item._id}><span className={`resource-type resource-status-${item.status}`}>{item.type.replaceAll('_', ' ')} · {item.status}</span><h2><Link to={`/resources/${item._id}`}>{item.title}</Link></h2><p>{[item.subject, item.course, item.semester && `Semester ${item.semester}`, item.year].filter(Boolean).join(' · ')}</p><div className="resource-card-footer"><Link className="secondary-button" to={`/resources/${item._id}`}>View</Link><Link className="secondary-button" to={`/resources/share?id=${item._id}`}>Edit</Link><button className="secondary-button danger-text" onClick={() => remove(item)} disabled={pending === item._id}>{pending === item._id ? 'Deleting...' : 'Delete'}</button></div></article>)}</div> : <div className="empty-state">No resources found.</div>}{pages > 1 && <div className="voice-pagination"><button className="secondary-button" disabled={page <= 1} onClick={() => setPage((n) => n - 1)}>Previous</button><span>Page {page} of {pages}</span><button className="secondary-button" disabled={page >= pages} onClick={() => setPage((n) => n + 1)}>Next</button></div>}</section>
+}
+export default MyResources

@@ -1,0 +1,28 @@
+const express = require('express')
+const controller = require('../controllers/engagementController')
+const protect = require('../middleware/authMiddleware')
+const createUserRateLimiter = require('../middleware/createUserRateLimiter')
+
+const router = express.Router()
+const limitEngagementActions = createUserRateLimiter({ windowMs: 60_000, maxRequests: 10, message: 'Too many engagement actions. Please wait and try again.' })
+const optionalAuth = (req, res, next) => req.headers.authorization ? protect(req, res, next) : next()
+
+router.get('/feed', optionalAuth, controller.weeklyFeed)
+router.get('/deals', controller.getDeals)
+router.get('/coupons', controller.listCoupons)
+router.post('/coupons/claim', protect, limitEngagementActions, controller.claimCoupon)
+router.get('/trending', controller.trending)
+router.get('/recently-viewed', protect, controller.recentlyViewed)
+router.get('/points', protect, controller.pointSummary)
+router.get('/challenges', optionalAuth, controller.listChallenges)
+router.post('/challenges/:id/claim', protect, limitEngagementActions, controller.claimChallengeReward)
+router.get('/polls', optionalAuth, controller.listPolls)
+router.post('/polls', protect, limitEngagementActions, controller.createPoll)
+router.post('/polls/:id/vote', protect, limitEngagementActions, controller.votePoll)
+router.post('/polls/:id/close', protect, controller.closePoll)
+router.post('/offers', protect, limitEngagementActions, controller.createOffer)
+router.get('/offers/mine', protect, controller.myOffers)
+router.put('/offers/:id', protect, controller.updateOffer)
+router.delete('/offers/:id', protect, controller.cancelOffer)
+
+module.exports = router
