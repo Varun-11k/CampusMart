@@ -4245,3 +4245,61 @@ h2 {
     flex-direction: column;
   }
 }
+
+@media (max-width: 680px) {
+  body {
+    min-width: 0;
+    padding-bottom: calc(70px + env(safe-area-inset-bottom));
+  }
+
+  .site-header {
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 58px;
+    gap: 10px;
+    padding: 9px 15px;
+  }
+
+  .site-header .site-nav,
+  .site-header .header-actions {
+    display: none;
+  }
+
+  .site-header .header-search {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+  }
+
+  .site-header .search-bar {
+    display: flex;
+    width: 100%;
+    max-width: none;
+    padding: 2px 9px;
+  }
+
+  .site-header .search-bar input {
+    min-width: 0;
+    padding: 7px 0;
+    font-size: 16px;
+  }
+
+  .site-main {
+    padding: 24px 15px 46px;
+  }
+
+  .mobile-nav {
+    height: calc(66px + env(safe-area-inset-bottom));
+    padding: 5px max(8px, env(safe-area-inset-left)) calc(5px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
+  }
+
+  .mobile-nav>a,
+  .mobile-nav summary,
+  .mobile-menu-sheet a,
+  .mobile-menu-sheet button {
+    min-height: 44px;
+  }
+}

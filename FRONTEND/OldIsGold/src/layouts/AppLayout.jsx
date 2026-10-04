@@ -16,14 +16,36 @@ const profileLinks = [
   ['/campus-exchange/my-exchanges', 'My Exchanges'], ['/lost-found/my-reports', 'My Reports'],
 ]
 
+function closeMenus() {
+  document.querySelectorAll('.site-header details[open], .mobile-nav details[open]').forEach((menu) => { menu.open = false })
+}
+
 function AppLayout() {
-  const closeMenus = () => document.querySelectorAll('.site-header details[open], .mobile-nav details[open]').forEach((menu) => { menu.open = false })
   const [search, setSearch] = useState('')
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
-  useEffect(() => setSearch(new URLSearchParams(location.search).get('search') || ''), [location.search])
+  useEffect(() => {
+    setSearch(new URLSearchParams(location.search).get('search') || '')
+    closeMenus()
+  }, [location.pathname, location.search, location.hash])
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') closeMenus()
+    }
+    const handlePointerDown = (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest('.site-header details, .mobile-nav details')) closeMenus()
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [])
   const handleSearchKeyDown = (event) => {
     if (event.key !== 'Enter') return
     event.preventDefault()
