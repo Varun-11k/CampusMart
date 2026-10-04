@@ -1,0 +1,10 @@
+[build]
+  base = "FRONTEND/OldIsGold"
+  command = "npm install && npm run build"
+  publish = "dist"
+
+# Client-side routing (react-router BrowserRouter)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
