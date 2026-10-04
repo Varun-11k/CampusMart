@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const API_URL = `${(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '').replace(/\/api$/i, '')}/api`
 
 async function request(path, options = {}) {
   const { headers = {}, ...requestOptions } = options

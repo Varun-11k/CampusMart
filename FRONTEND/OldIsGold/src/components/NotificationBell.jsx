@@ -39,7 +39,7 @@ function NotificationBell() {
         if (active) setError(requestError.message)
       })
 
-    const socketUrl = import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '') || 'http://localhost:5000'
+    const socketUrl = import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '') || window.location.origin
     const socket = io(socketUrl, { auth: { token } })
     socket.on('notification', (payload) => {
       const notification = payload?.notification

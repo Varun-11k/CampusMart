@@ -1,0 +1,28 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "backend": {
+      "root": "BACKEND",
+      "framework": "express",
+      "entrypoint": "server.js"
+    },
+    "oldisgold": {
+      "root": "FRONTEND/OldIsGold",
+      "framework": "vite"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": { "service": "backend" }
+    },
+    {
+      "source": "/socket.io/(.*)",
+      "destination": { "service": "backend" }
+    },
+    {
+      "source": "/(.*)",
+      "destination": { "service": "oldisgold" }
+    }
+  ]
+}

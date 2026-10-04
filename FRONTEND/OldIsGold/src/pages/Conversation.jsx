@@ -60,7 +60,7 @@ function ConversationPage() {
   useEffect(() => {
     if (!token || !conversationId) return
 
-    const socketUrl = import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '') || 'http://localhost:5000'
+    const socketUrl = import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '') || window.location.origin
     const socket = io(socketUrl, {
       auth: { token },
     })
