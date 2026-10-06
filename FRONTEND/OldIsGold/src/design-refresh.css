@@ -99,7 +99,10 @@ body {
 
 .header-actions>.nav-button,
 .header-actions>.nav-button:hover {
-    color: #fff;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--green-dark);
+    box-shadow: 0 5px 14px rgba(23, 33, 27, .08);
 }
 
 .header-search {
