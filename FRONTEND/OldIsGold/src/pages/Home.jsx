@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import CategoryStrip from '../components/CategoryStrip'
 import HowItWorks from '../components/HowItWorks'
+import InstallAppButton from '../components/InstallAppButton'
 import ProductCard from '../components/ProductCard'
 import SearchBar from '../components/SearchBar'
 import { useAuth } from '../context/useAuth'
@@ -96,7 +97,7 @@ function Home() {
     }
 
     return <>
-        <section className="home-hero"><div className="hero-copy"><p className="eyebrow">The student marketplace</p><h1>Buy &amp; sell right on campus.</h1><p className="lead">Find useful things from people in your college community, or give your own essentials a second life.</p><div className="hero-actions"><Link className="primary-button" to="/marketplace">Browse marketplace <span>→</span></Link><Link className="secondary-button" to="/sell">Sell an item</Link></div></div><div className="hero-note"><span>✦</span><p>Better finds,<br /><strong>closer to home.</strong></p></div></section>
+        <section className="home-hero"><div className="hero-copy"><p className="eyebrow">The student marketplace</p><h1>Buy &amp; sell right on campus.</h1><p className="lead">Find useful things from people in your college community, or give your own essentials a second life.</p><div className="hero-actions"><Link className="primary-button" to="/marketplace">Browse marketplace <span>→</span></Link><Link className="secondary-button" to="/sell">Sell an item</Link><InstallAppButton /></div></div><div className="hero-note"><span>✦</span><p>Better finds,<br /><strong>closer to home.</strong></p></div></section>
         <section className="home-search"><p className="eyebrow">What are you looking for?</p><SearchBar value={search} onChange={setSearch} onKeyDown={handleSearchKeyDown} /><p className="search-hint">Press Enter to search listings.</p></section>
         <section className="category-section"><div className="section-heading"><div><p className="eyebrow">Browse by need</p><h2>Find your category</h2></div><Link to="/marketplace" className="text-link">See all categories →</Link></div><CategoryStrip /></section>
         <section className="recommendations-section"><div className="section-heading"><div><p className="eyebrow">Picked from your activity</p><h2>Recommended for you</h2></div><Link to="/marketplace" className="text-link">Browse all listings →</Link></div>{recommendationsLoading ? <div className="empty-state">Finding relevant listings...</div> : recommendations.length ? <div className="product-grid">{recommendations.map((listing) => <ProductCard key={listing._id} listing={listing} isSaved={savedIds.includes(listing._id)} isSaving={wishlistLoading || pendingIds.includes(listing._id)} onToggleSave={handleToggleSave} recommendationReason={listing.recommendationReason} />)}</div> : <div className="recommendation-fallback"><p>Explore products to get personalized recommendations.</p>{loading ? <span>Loading current listings...</span> : listings.length ? <Link className="text-link" to="/marketplace">Explore {listings.length} current marketplace listings →</Link> : <span>There are no available marketplace listings right now.</span>}</div>}</section>
