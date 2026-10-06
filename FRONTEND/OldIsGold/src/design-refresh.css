@@ -97,6 +97,11 @@ body {
     color: var(--purple);
 }
 
+.header-actions>.nav-button,
+.header-actions>.nav-button:hover {
+    color: #fff;
+}
+
 .header-search {
     flex: 1;
     min-width: 100px;
