@@ -1,0 +1,37 @@
+function serializePost(post, userId) {
+    const data = typeof post.toObject === 'function' ? post.toObject() : { ...post }
+    const likes = Array.isArray(data.likes) ? data.likes : []
+    const saves = Array.isArray(data.saves) ? data.saves : []
+    const author = data.author && typeof data.author === 'object' ? data.author : null
+    return {
+        _id: data._id,
+        content: data.content || '',
+        postType: data.postType || 'text',
+        category: data.category || 'general',
+        hashtags: data.hashtags || [],
+        campusTag: data.campusTag || '',
+        visibility: data.visibility || 'campus',
+        media: data.media || [],
+        poll: data.poll ? {
+            question: data.poll.question || '',
+            options: (data.poll.options || []).map((option) => ({
+                _id: option._id,
+                text: option.text,
+                votes: Array.isArray(option.votes) ? option.votes.length : 0,
+                votedByMe: Boolean(userId && Array.isArray(option.votes) && option.votes.some((id) => id.toString() === userId.toString())),
+            })),
+            expiresAt: data.poll.expiresAt || null,
+        } : null,
+        author: author ? {
+            _id: author._id,
+            name: author.name,
+            college: author.college,
+            profileImage: author.profileImage,
+        } : data.author,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        likeCount: likes.length,
+        likedByMe: Boolean(userId && likes.some((id) => id.toString() === userId.toString())),
+        savedByMe: Boolean(userId && saves.some((id) => id.toString() === userId.toString())),
+        saveCount: saves.length,
+        commentCount: data.commentCount || 0,

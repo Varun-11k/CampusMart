@@ -1,9 +1,10 @@
 const Product = require('../models/Product')
 const { parseSearchIntent, normalizeSearchFilters, AIServiceError } = require('../services/aiService')
+const { DEFAULT_CATEGORIES, resolveCategory } = require('../services/productCategoryService')
 
 const MAX_QUERY_LENGTH = 300
 const MAX_SEARCH_RESULTS = 50
-const categories = ['Books', 'Electronics', 'Hostel', 'Fashion', 'Accessories', 'Sports', 'Other']
+const categories = [...new Set(DEFAULT_CATEGORIES.flatMap((category) => [category.name, ...category.aliases]))]
 const conditions = ['New', 'Like New', 'Good', 'Fair']
 const filterFields = ['searchText', 'category', 'condition', 'minPrice', 'maxPrice']
 const sellerFields = 'name college profileImage'
@@ -76,7 +77,8 @@ function buildProductQuery(filters) {
     }
 
     if (filters.category !== null) {
-        clauses.push({ category: { $in: categories.filter((category) => category === filters.category) } })
+        const matches = DEFAULT_CATEGORIES.find((category) => category.name === filters.category || category.aliases.includes(filters.category))
+        clauses.push({ category: { $in: matches ? [matches.name, ...matches.aliases] : [filters.category] } })
     }
     if (filters.condition !== null) {
         clauses.push({ condition: { $in: conditions.filter((condition) => condition === filters.condition) } })
@@ -109,6 +111,10 @@ async function searchProducts(req, res) {
     }
 
     try {
+        if (filters.category) {
+            const resolved = await resolveCategory(filters.category)
+            if (resolved) filters.category = resolved.name
+        }
         const products = await Product.find(buildProductQuery(filters))
             .populate('seller', sellerFields)
             .sort({ createdAt: -1 })

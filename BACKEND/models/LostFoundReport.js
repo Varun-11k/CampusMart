@@ -9,12 +9,15 @@ const lostFoundReportSchema = new mongoose.Schema({
     date: { type: Date, required: true },
     images: { type: [String], default: [] },
     reportedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    status: { type: String, enum: ['active', 'claimed', 'returned', 'closed'], default: 'active', index: true },
+    status: { type: String, enum: ['active', 'under_review', 'claimed', 'resolved', 'returned', 'closed'], default: 'active', index: true },
+    moderationStatus: { type: String, enum: ['active', 'hidden', 'removed'], default: 'active', index: true },
+    contactPreference: { type: String, enum: ['in_app', 'claims_only'], default: 'in_app' },
 }, { timestamps: true })
 
 lostFoundReportSchema.index({ status: 1, type: 1, createdAt: -1 })
 lostFoundReportSchema.index({ status: 1, category: 1, createdAt: -1 })
 lostFoundReportSchema.index({ status: 1, location: 1, createdAt: -1 })
 lostFoundReportSchema.index({ reportedBy: 1, createdAt: -1 })
+lostFoundReportSchema.index({ moderationStatus: 1, status: 1, type: 1, createdAt: -1 })
 
 module.exports = mongoose.model('LostFoundReport', lostFoundReportSchema)

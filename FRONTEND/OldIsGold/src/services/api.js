@@ -11,7 +11,10 @@ async function request(path, options = {}) {
       headers: isFormData ? headers : { 'Content-Type': 'application/json', ...headers },
     })
   } catch {
-    throw new Error(`Cannot reach the backend at ${API_URL}. Make sure the backend server is running.`)
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new Error('You are offline. Reconnect and try again. The request was not confirmed.')
+    }
+    throw new Error(`Cannot reach the backend at ${API_URL}. The request was not confirmed; check its status before retrying.`)
   }
 
   const data = await response.json().catch(() => ({}))
@@ -19,6 +22,7 @@ async function request(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.message || 'Request failed')
     error.status = response.status
+    error.errors = data.errors || {}
     throw error
   }
 
@@ -31,15 +35,92 @@ export const authApi = {
   me: (token) => request('/auth/me', { headers: { Authorization: `Bearer ${token}` } }),
 }
 
+export const authSecurityApi = {
+  google: (credential, college) => request('/auth/google', { method: 'POST', body: JSON.stringify({ credential, ...(college ? { college } : {}) }) }),
+  logout: (token) => request('/auth/logout', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
+  forgotPassword: (email) => request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  resetPassword: (payload) => request('/auth/reset-password', { method: 'POST', body: JSON.stringify(payload) }),
+  verifyEmail: (token) => request('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }),
+  resendVerification: (email) => request('/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) }),
+  updateProfile: (token, payload) => request('/auth/profile', { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }),
+  changePassword: (token, payload) => request('/auth/password', { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }),
+  deactivate: (token, payload) => request('/auth/deactivate', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }),
+}
+
+export const studentDashboardApi = {
+  get: (token) => request('/auth/dashboard', { headers: { Authorization: `Bearer ${token}` } }),
+}
+
+function uploadWithProgress(path, token, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData()
+    formData.append('photo', file)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_URL}${path}`)
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100))
+    })
+    xhr.addEventListener('load', () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch {}
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const error = new Error(data.message || 'Profile photo upload failed.')
+        error.status = xhr.status
+        error.errors = data.errors || {}
+        reject(error)
+        return
+      }
+      resolve(data)
+    })
+    xhr.addEventListener('error', () => reject(new Error(`Cannot reach the backend at ${API_URL}. Make sure the backend server is running.`)))
+    xhr.send(formData)
+  })
+}
+
+function uploadFormDataWithProgress(path, token, formData, onProgress = () => {}, method = 'POST') {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(method, `${API_URL}${path}`)
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100))
+    })
+    xhr.addEventListener('load', () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch {}
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const error = new Error(data.message || 'Upload failed.')
+        error.status = xhr.status
+        error.errors = data.errors || {}
+        reject(error)
+        return
+      }
+      resolve(data)
+    })
+    xhr.addEventListener('error', () => reject(new Error('Upload failed. Check your connection and try again.')))
+    xhr.send(formData)
+  })
+}
+
+export const profilePhotoApi = {
+  upload: (token, file, onProgress = () => {}) => uploadWithProgress('/auth/profile/photo', token, file, onProgress),
+}
+
 export const productApi = {
-  list: () => request('/products'),
+  list: (params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))
+    return request(`/products${query.size ? `?${query}` : ''}`)
+  },
+  categories: () => request('/products/categories'),
+  related: (id) => request(`/products/related/${encodeURIComponent(id)}`),
   mine: (token) => request('/products/mine', { headers: { Authorization: `Bearer ${token}` } }),
   byId: (id) => request(`/products/${encodeURIComponent(id)}`),
   trackView: (token, id) => request(`/products/${encodeURIComponent(id)}/view`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
   }),
-  create: (token, payload, files = []) => {
+  create: (token, payload, files = [], onProgress = () => {}) => {
     if (files.length > 0) {
       const formData = new FormData()
       Object.entries(payload).forEach(([key, value]) => {
@@ -49,11 +130,7 @@ export const productApi = {
       })
       files.forEach((file) => formData.append('images', file))
 
-      return request('/products', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      })
+      return uploadFormDataWithProgress('/products', token, formData, onProgress)
     }
 
     return request('/products', {
@@ -71,6 +148,14 @@ export const productApi = {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   }),
+  updateWithImages: (token, id, payload, files = []) => {
+    const formData = new FormData()
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) formData.append(key, typeof value === 'object' ? JSON.stringify(value) : value)
+    })
+    files.forEach((file) => formData.append('images', file))
+    return uploadFormDataWithProgress(`/products/${encodeURIComponent(id)}`, token, formData, onProgress, 'PUT')
+  },
 }
 
 export const chatApi = {
@@ -108,24 +193,29 @@ export const lostFoundApi = {
     return request(`/lost-found${query.size ? `?${query}` : ''}`)
   },
   get: (id, token) => request(`/lost-found/${encodeURIComponent(id)}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-  create: (token, payload, files = []) => {
+  create: (token, payload, files = [], onProgress = () => {}) => {
     const formData = new FormData()
     Object.entries(payload).forEach(([key, value]) => formData.append(key, key === 'images' ? JSON.stringify(value || []) : value))
     files.forEach((file) => formData.append('images', file))
-    return request('/lost-found', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData })
+    return files.length ? uploadFormDataWithProgress('/lost-found', token, formData, onProgress) : request('/lost-found', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData })
   },
-  update: (token, id, payload, files = []) => {
+  update: (token, id, payload, files = [], onProgress = () => {}) => {
     const formData = new FormData()
     Object.entries(payload).forEach(([key, value]) => formData.append(key, key === 'images' ? JSON.stringify(value || []) : value))
     files.forEach((file) => formData.append('images', file))
-    return request(`/lost-found/${encodeURIComponent(id)}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: formData })
+    return files.length ? uploadFormDataWithProgress(`/lost-found/${encodeURIComponent(id)}`, token, formData, onProgress, 'PUT') : request(`/lost-found/${encodeURIComponent(id)}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: formData })
   },
   remove: (token, id) => request(`/lost-found/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }),
   myReports: (token) => request('/lost-found/my-reports', { headers: { Authorization: `Bearer ${token}` } }),
   myClaims: (token) => request('/lost-found/my-claims', { headers: { Authorization: `Bearer ${token}` } }),
   claim: (token, id, message) => request(`/lost-found/${encodeURIComponent(id)}/claim`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ message }) }),
-  updateClaim: (token, id, claimId, status) => request(`/lost-found/${encodeURIComponent(id)}/claims/${encodeURIComponent(claimId)}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ status }) }),
+  updateClaim: (token, id, claimId, status, reviewerNote = '') => request(`/lost-found/${encodeURIComponent(id)}/claims/${encodeURIComponent(claimId)}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ status, ...(reviewerNote.trim() ? { reviewerNote: reviewerNote.trim() } : {}) }) }),
+  replyToClaim: (token, id, claimId, message) => request(`/lost-found/${encodeURIComponent(id)}/claims/${encodeURIComponent(claimId)}/reply`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ message }) }),
   returned: (token, id) => request(`/lost-found/${encodeURIComponent(id)}/returned`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
+  setStatus: (token, id, status) => request(`/lost-found/${encodeURIComponent(id)}/status`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ status }) }),
+  adminClaims: (token, page = 1) => request(`/lost-found/admin/claims?page=${page}&limit=20`, { headers: { Authorization: `Bearer ${token}` } }),
+  adminReports: (token, page = 1, moderationStatus = '') => request(`/lost-found/admin/reports?page=${page}&limit=20${moderationStatus ? `&moderationStatus=${encodeURIComponent(moderationStatus)}` : ''}`, { headers: { Authorization: `Bearer ${token}` } }),
+  moderateReport: (token, id, moderationStatus) => request(`/lost-found/admin/reports/${encodeURIComponent(id)}/moderation`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ moderationStatus }) }),
 }
 
 export const campusExchangeApi = {
@@ -201,6 +291,16 @@ export const adminApi = {
     if (status) params.set('status', status)
     return request(`/admin/reports?${params}`, { headers: { Authorization: `Bearer ${token}` } })
   },
+  campusVoices: (token, { status = 'pending', page = 1, limit = 20 } = {}) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+    if (status) params.set('status', status)
+    return request('/admin/campus-voices?' + params, { headers: { Authorization: 'Bearer ' + token } })
+  },
+  moderateCampusVoice: (token, id, payload) => request('/admin/campus-voices/' + encodeURIComponent(id) + '/moderation', {
+    method: 'PUT',
+    headers: { Authorization: 'Bearer ' + token },
+    body: JSON.stringify(payload),
+  }),
   report: (token, id) => request(`/admin/reports/${encodeURIComponent(id)}`, {
     headers: { Authorization: `Bearer ${token}` },
   }),
@@ -216,6 +316,17 @@ export const adminApi = {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({ moderationStatus }),
+  }),
+  categories: (token) => request('/admin/categories', { headers: { Authorization: 'Bearer ' + token } }),
+  createCategory: (token, payload) => request('/admin/categories', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: JSON.stringify(payload),
+  }),
+  updateCategory: (token, id, payload) => request(`/admin/categories/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { Authorization: 'Bearer ' + token },
+    body: JSON.stringify(payload),
   }),
   user: (token, id) => request(`/admin/users/${encodeURIComponent(id)}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -313,4 +424,45 @@ export const resourceApi = {
   mine: (token, page = 1) => request(`/resources/my-resources?page=${page}&limit=20`, { headers: { Authorization: `Bearer ${token}` } }),
   download: (token, id) => request(`/resources/${encodeURIComponent(id)}/download`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
   report: (token, id, payload) => request(`/resources/${encodeURIComponent(id)}/report`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }),
+}
+
+export const campusFeedApi = {
+  list: (params = {}, token) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))
+    return request(`/campus-feed${query.size ? `?${query}` : ''}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+  },
+  reels: (params = {}, token) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))
+    return request(`/campus-feed/reels${query.size ? `?${query}` : ''}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+  },
+  get: (id, token) => request(`/campus-feed/${encodeURIComponent(id)}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  create: (token, payload, files = []) => {
+    const formData = new FormData()
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null) return
+      if (typeof value === 'object') formData.append(key, JSON.stringify(value))
+      else formData.append(key, value)
+    })
+    files.forEach((file) => formData.append('media', file))
+    return request('/campus-feed', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData })
+  },
+  update: (token, id, payload) => request(`/campus-feed/${encodeURIComponent(id)}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }),
+  remove: (token, id) => request(`/campus-feed/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }),
+  like: (token, id) => request(`/campus-feed/${encodeURIComponent(id)}/like`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
+  save: (token, id) => request(`/campus-feed/${encodeURIComponent(id)}/save`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
+  votePoll: (token, id, optionId) => request(`/campus-feed/${encodeURIComponent(id)}/poll/vote`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ optionId }) }),
+  comments: (id, params = {}, token) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))
+    return request(`/campus-feed/${encodeURIComponent(id)}/comments${query.size ? `?${query}` : ''}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+  },
+  addComment: (token, id, payload) => request(`/campus-feed/${encodeURIComponent(id)}/comments`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }),
+  deleteComment: (token, commentId) => request(`/campus-feed/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }),
+  likeComment: (token, commentId) => request(`/campus-feed/comments/${encodeURIComponent(commentId)}/like`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
+  saved: (token, page = 1) => request(`/campus-feed/saved?page=${page}&limit=20`, { headers: { Authorization: `Bearer ${token}` } }),
+  mine: (token, page = 1) => request(`/campus-feed/mine?page=${page}&limit=20`, { headers: { Authorization: `Bearer ${token}` } }),
+  trendingHashtags: () => request('/campus-feed/trending/hashtags'),
+  reportPost: (token, id, payload) => request(`/campus-feed/${encodeURIComponent(id)}/report`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }),
+  reportComment: (token, commentId, payload) => request(`/campus-feed/comments/${encodeURIComponent(commentId)}/report`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) }),
+  follow: (token, userId) => request(`/campus-feed/follow/${encodeURIComponent(userId)}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }),
+  unfollow: (token, userId) => request(`/campus-feed/follow/${encodeURIComponent(userId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }),
 }

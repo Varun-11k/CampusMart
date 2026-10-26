@@ -1,0 +1,7 @@
+◇ injected env (13) from .env
+CREATE_STATUS 201
+DB_COUNT 5 ACTIVE 5
+LIST_STATUS 200
+LIST_BODY {"success":true,"posts":[{"_id":"6adf4449fda78af7894ae73f","content":"smoke test post","postType":"text","category":"general","hashtags":[],"campusTag":"","visibility":"campus","media":[],"poll":{"que
+MINE_STATUS 200
+MINE_BODY {"success":true,"posts":[{"_id":"6adf4449fda78af7894ae73f","content":"smoke test post","postType":"text","category":"general","hashtags":[],"campusTag":"","visibility":"campus","media":[],"poll":{"que

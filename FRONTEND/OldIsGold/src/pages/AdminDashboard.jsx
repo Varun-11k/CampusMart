@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
-import { adminApi } from '../services/api'
+import { adminApi, lostFoundApi } from '../services/api'
 import AdminEngagementControls from '../components/AdminEngagementControls'
+import AdminCategoryManager from '../components/AdminCategoryManager'
+import AdminCampusVoiceModeration from '../components/AdminCampusVoiceModeration'
 
 const formatDate = (value) => {
   if (!value) return '—'
@@ -25,6 +27,7 @@ function AdminDashboard() {
   const [adminNote, setAdminNote] = useState('')
   const [viewedUser, setViewedUser] = useState(null)
   const [pendingAction, setPendingAction] = useState('')
+  const [lostFoundClaims, setLostFoundClaims] = useState([])
 
   useEffect(() => {
     if (authLoading) return undefined
@@ -75,6 +78,39 @@ function AdminDashboard() {
 
     return () => { active = false }
   }, [page, statusFilter, token, user?.role])
+
+  useEffect(() => {
+    if (user?.role !== 'admin' || !token) return undefined
+    let active = true
+    lostFoundApi.adminClaims(token).then((data) => { if (active) setLostFoundClaims(data.claims || []) }).catch((requestError) => { if (active) setError(requestError.message) })
+    return () => { active = false }
+  }, [token, user?.role])
+
+  const updateLostFoundClaim = async (claim, status) => {
+    const reportId = claim.report?._id
+    if (!reportId) return
+    let note = ''
+    if (status === 'more_info_requested') {
+      note = window.prompt('What additional distinguishing details should the claimant provide?') || ''
+      if (!note.trim()) return
+    }
+    setPendingAction(`claim:${claim._id}`)
+    try {
+      await lostFoundApi.updateClaim(token, reportId, claim._id, status, note)
+      const data = await lostFoundApi.adminClaims(token)
+      setLostFoundClaims(data.claims || [])
+    } catch (requestError) { setError(requestError.message) }
+    finally { setPendingAction('') }
+  }
+
+  const moderateLostFoundReport = async (lostFoundReport, moderationStatus) => {
+    setPendingAction(`lost-found:${lostFoundReport._id}`)
+    try {
+      const data = await lostFoundApi.moderateReport(token, lostFoundReport._id, moderationStatus)
+      setSelectedReport((current) => current ? { ...current, lostFoundReport: { ...current.lostFoundReport, ...data.report } } : current)
+    } catch (requestError) { setError(requestError.message) }
+    finally { setPendingAction('') }
+  }
 
   const updateReport = async (report, updates) => {
     setPendingAction(report._id)
@@ -145,11 +181,20 @@ function AdminDashboard() {
         <div className="admin-stat"><span>Total users</span><strong>{overview?.totalUsers ?? '—'}</strong></div>
         <div className="admin-stat"><span>Total products</span><strong>{overview?.totalProducts ?? '—'}</strong></div>
         <div className="admin-stat"><span>Pending reports</span><strong>{overview?.pendingReports ?? '—'}</strong></div>
+        <div className="admin-stat"><span>Pending confessions</span><strong>{overview?.pendingConfessions ?? '—'}</strong></div>
         <div className="admin-stat"><span>Resolved reports</span><strong>{overview?.resolvedReports ?? '—'}</strong></div>
       </div>
 
       <section className="admin-section">
         <AdminEngagementControls token={token} />
+      </section>
+      <AdminCampusVoiceModeration token={token} />
+      <section className="admin-section">
+        <div className="admin-section-heading"><div><p className="eyebrow">Private case details</p><h2>Lost &amp; Found claims</h2></div></div>
+        {lostFoundClaims.length ? <div className="admin-report-list">{lostFoundClaims.map((claim) => <article className="admin-detail-panel" key={claim._id}><div className="admin-detail-heading"><h3>{claim.report?.title || 'Report unavailable'}</h3><span className={`admin-status status-${claim.status}`}>{claim.status.replaceAll('_', ' ')}</span></div><p><strong>Claimant:</strong> {claim.claimant?.name || 'CampusMart member'}</p><p><strong>Distinguishing details:</strong> {claim.message}</p>{claim.reviewerNote && <p><strong>Reviewer note:</strong> {claim.reviewerNote}</p>}{['pending', 'more_info_requested'].includes(claim.status) && <div className="admin-row-actions"><button type="button" className="admin-action" onClick={() => updateLostFoundClaim(claim, 'approved')} disabled={pendingAction === `claim:${claim._id}`}>Approve</button><button type="button" className="admin-action" onClick={() => updateLostFoundClaim(claim, 'more_info_requested')} disabled={pendingAction === `claim:${claim._id}`}>Request more information</button><button type="button" className="admin-action danger-text" onClick={() => updateLostFoundClaim(claim, 'rejected')} disabled={pendingAction === `claim:${claim._id}`}>Reject</button></div>}</article>)}</div> : <div className="empty-state compact-empty">No Lost &amp; Found claims are waiting for review.</div>}
+      </section>
+      <section className="admin-section">
+        <AdminCategoryManager token={token} />
       </section>
 
       <section className="admin-section">
@@ -173,7 +218,7 @@ function AdminDashboard() {
               <tbody>
                 {reports.map((report) => (
                   <tr key={report._id}>
-                    <td>{report.campusExchange ? report.campusExchange.title : report.resource ? report.resource.title : report.voicePost ? `${report.voicePost.category} post` : report.product?.title || (report.reportedUser ? 'User report' : 'Product unavailable')}</td>
+                    <td>{report.lostFoundReport ? `${report.lostFoundReport.type}: ${report.lostFoundReport.title}` : report.campusExchange ? report.campusExchange.title : report.resource ? report.resource.title : report.voicePost ? `${report.voicePost.category} post` : report.product?.title || (report.reportedUser ? 'User report' : 'Product unavailable')}</td>
                     <td>{report.reporter?.name || 'Unknown user'}</td>
                     <td>{report.reason.replaceAll('_', ' ')}</td>
                     <td><span className={`admin-status status-${report.status}`}>{report.status}</span></td>
@@ -206,6 +251,7 @@ function AdminDashboard() {
               const userId = subjectUser._id
               return <div className="admin-user-summary"><strong>{selectedReport.reportedUser ? 'Reported user:' : 'Product seller:'}</strong> {subjectUser.name}<button type="button" className="admin-action" onClick={() => viewUser(userId)} disabled={pendingAction === `user:${userId}`}>View user</button></div>
             })()}
+            {selectedReport.lostFoundReport && <div className="admin-voice-review"><div className="admin-product-summary"><strong>Lost &amp; Found post:</strong> {selectedReport.lostFoundReport.type}: {selectedReport.lostFoundReport.title}<span className={`admin-status status-${selectedReport.lostFoundReport.moderationStatus || 'active'}`}>{selectedReport.lostFoundReport.moderationStatus || 'active'}</span></div><p>{selectedReport.lostFoundReport.category} · {selectedReport.lostFoundReport.location}</p><p>{selectedReport.lostFoundReport.description}</p>{selectedReport.lostFoundReport.images?.[0] && <img className="admin-reported-product-image" src={selectedReport.lostFoundReport.images[0]} alt="Reported item" />}<div className="admin-row-actions"><button type="button" className="admin-action" onClick={() => moderateLostFoundReport(selectedReport.lostFoundReport, 'active')} disabled={pendingAction.startsWith('lost-found:') || selectedReport.lostFoundReport.moderationStatus === 'active'}>Restore</button><button type="button" className="admin-action" onClick={() => moderateLostFoundReport(selectedReport.lostFoundReport, 'hidden')} disabled={pendingAction.startsWith('lost-found:') || selectedReport.lostFoundReport.moderationStatus === 'hidden'}>Hide</button><button type="button" className="admin-action danger-text" onClick={() => moderateLostFoundReport(selectedReport.lostFoundReport, 'removed')} disabled={pendingAction.startsWith('lost-found:') || selectedReport.lostFoundReport.moderationStatus === 'removed'}>Remove</button></div></div>}
             {selectedReport.product && <div className="admin-product-review">
               <div className="admin-product-summary"><strong>Reported product:</strong> {selectedReport.product.title}<span className={`admin-status status-${selectedReport.product.moderationStatus || 'active'}`}>{selectedReport.product.moderationStatus || 'active'}</span></div>
               <div className="admin-reported-product">

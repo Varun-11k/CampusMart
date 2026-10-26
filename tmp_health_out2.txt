@@ -1,0 +1,6 @@
+◇ injected env (13) from .env
+connected
+listening 62638
+health status 200
+health body {"success":true,"message":"CampusMart API is running"}
+^C

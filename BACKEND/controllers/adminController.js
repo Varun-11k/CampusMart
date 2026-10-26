@@ -3,8 +3,10 @@ const Product = require('../models/Product')
 const Report = require('../models/Report')
 const User = require('../models/User')
 const CampusVoice = require('../models/CampusVoice')
+const { moderateCampusVoice } = require('../services/campusVoiceModerationService')
 const Resource = require('../models/Resource')
 const CampusExchange = require('../models/CampusExchange')
+const LostFoundReport = require('../models/LostFoundReport')
 
 const reportStatuses = ['pending', 'reviewing', 'resolved', 'dismissed']
 const moderationStatuses = ['active', 'hidden', 'removed']
@@ -16,9 +18,10 @@ function populatedReport(query) {
     return query
         .populate('reporter', reporterFields)
         .populate('reportedUser', reporterFields)
-        .populate({ path: 'voicePost', select: 'content category status createdAt author' })
+        .populate({ path: 'voicePost', select: 'content category status createdAt' })
         .populate({ path: 'resource', select: 'title description type subject course semester year fileUrl externalUrl status uploadedBy' })
         .populate({ path: 'campusExchange', select: 'title description category condition offeredItem wantedItem location images owner status moderationStatus createdAt' })
+        .populate({ path: 'lostFoundReport', select: 'type title category description location date images status reportedBy createdAt' })
         .populate({
             path: 'product',
             select: productFields,
@@ -28,16 +31,17 @@ function populatedReport(query) {
 
 async function getOverview(req, res, next) {
     try {
-        const [totalUsers, totalProducts, pendingReports, resolvedReports] = await Promise.all([
+        const [totalUsers, totalProducts, pendingReports, resolvedReports, pendingConfessions] = await Promise.all([
             User.countDocuments(),
             Product.countDocuments(),
             Report.countDocuments({ status: 'pending' }),
             Report.countDocuments({ status: 'resolved' }),
+            CampusVoice.countDocuments({ category: 'confession', status: 'pending' }),
         ])
 
         res.json({
             success: true,
-            overview: { totalUsers, totalProducts, pendingReports, resolvedReports },
+            overview: { totalUsers, totalProducts, pendingReports, resolvedReports, pendingConfessions },
         })
     } catch (error) {
         next(error)
@@ -101,8 +105,8 @@ async function updateReport(req, res, next) {
         if (Object.hasOwn(updates, 'adminNote') && (typeof updates.adminNote !== 'string' || updates.adminNote.length > 1000)) {
             return res.status(400).json({ success: false, message: 'adminNote must be a string of at most 1000 characters' })
         }
-        if (Object.hasOwn(updates, 'voicePostStatus') && !['active', 'hidden', 'removed'].includes(updates.voicePostStatus)) {
-            return res.status(400).json({ success: false, message: 'voicePostStatus must be active, hidden, or removed' })
+        if (Object.hasOwn(updates, 'voicePostStatus') && !['active', 'hidden', 'rejected', 'removed'].includes(updates.voicePostStatus)) {
+            return res.status(400).json({ success: false, message: 'voicePostStatus must be active, hidden, rejected, or removed' })
         }
         if (Object.hasOwn(updates, 'resourceStatus') && !['active', 'hidden', 'removed'].includes(updates.resourceStatus)) return res.status(400).json({ success: false, message: 'resourceStatus must be active, hidden, or removed' })
         if (Object.hasOwn(updates, 'campusExchangeStatus') && !moderationStatuses.includes(updates.campusExchangeStatus)) return res.status(400).json({ success: false, message: 'campusExchangeStatus must be active, hidden, or removed' })
@@ -112,7 +116,8 @@ async function updateReport(req, res, next) {
 
         if (Object.hasOwn(updates, 'voicePostStatus')) {
             if (!report.voicePost) return res.status(400).json({ success: false, message: 'This report is not for a Campus Voice post' })
-            await CampusVoice.updateOne({ _id: report.voicePost }, { $set: { status: updates.voicePostStatus } })
+            const moderatedPost = await moderateCampusVoice(report.voicePost, updates.voicePostStatus, req.user._id, updates.adminNote?.trim() || '')
+            if (!moderatedPost) return res.status(404).json({ success: false, message: 'Campus Voice post not found' })
         }
         if (Object.hasOwn(updates, 'resourceStatus')) {
             if (!report.resource) return res.status(400).json({ success: false, message: 'This report is not for a resource' })
@@ -121,6 +126,13 @@ async function updateReport(req, res, next) {
         if (Object.hasOwn(updates, 'campusExchangeStatus')) {
             if (!report.campusExchange) return res.status(400).json({ success: false, message: 'This report is not for a Campus Exchange listing' })
             await CampusExchange.updateOne({ _id: report.campusExchange }, { $set: { moderationStatus: updates.campusExchangeStatus } })
+        }
+
+        if (report.lostFoundReport && Object.hasOwn(updates, 'status')) {
+            const targetReport = await LostFoundReport.findById(report.lostFoundReport).select('status')
+            if (targetReport?.status === 'active' && updates.status === 'reviewing') targetReport.status = 'under_review'
+            else if (targetReport?.status === 'under_review' && ['resolved', 'dismissed'].includes(updates.status)) targetReport.status = 'active'
+            if (targetReport && targetReport.isModified('status')) await targetReport.save()
         }
 
         if (Object.hasOwn(updates, 'status')) report.status = updates.status

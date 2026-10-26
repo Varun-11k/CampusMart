@@ -1,0 +1,150 @@
+        isMine: Boolean(userId && data.author && (data.author._id || data.author).toString() === userId.toString()),
+    }
+}
+async function followUser(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(400).json({ success: false, message: 'Invalid user ID' })
+        if (req.params.userId === req.user._id.toString()) return res.status(400).json({ success: false, message: 'You cannot follow yourself' })
+        const target = await User.findById(req.params.userId).select('_id name')
+        if (!target) return res.status(404).json({ success: false, message: 'User not found' })
+        await CampusFeedFollow.updateOne({ follower: req.user._id, following: target._id }, { $setOnInsert: { follower: req.user._id, following: target._id } }, { upsert: true })
+        try { await createAndEmitNotification({ recipient: target._id, type: 'system', title: 'New follower', message: `${req.user.name} started following you.` }) } catch {}
+        res.json({ success: true, following: true })
+    } catch (error) { next(error) }
+}
+
+async function unfollowUser(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(400).json({ success: false, message: 'Invalid user ID' })
+        await CampusFeedFollow.deleteOne({ follower: req.user._id, following: req.params.userId })
+        res.json({ success: true, following: false })
+    } catch (error) { next(error) }
+}
+
+async function savedPosts(req, res, next) {
+    try {
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1)
+        const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 15))
+        const posts = await CampusFeedPost.find({ status: 'active', saves: req.user._id }).populate('author', 'name college profileImage').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).select('+likes +saves')
+        const total = await CampusFeedPost.countDocuments({ status: 'active', saves: req.user._id })
+        res.json({ success: true, posts: posts.map((post) => serializePost(post, req.user._id)), pagination: { page, limit, total, pages: Math.ceil(total / limit) } })
+    } catch (error) { next(error) }
+}
+
+async function myPosts(req, res, next) {
+    try {
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1)
+        const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 15))
+        const posts = await CampusFeedPost.find({ author: req.user._id, status: { $ne: 'removed' } }).populate('author', 'name college profileImage').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).select('+likes +saves')
+        const total = await CampusFeedPost.countDocuments({ author: req.user._id, status: { $ne: 'removed' } })
+        res.json({ success: true, posts: posts.map((post) => serializePost(post, req.user._id)), pagination: { page, limit, total, pages: Math.ceil(total / limit) } })
+    } catch (error) { next(error) }
+}
+
+async function trendingHashtags(req, res, next) {
+    try {
+        const result = await CampusFeedPost.aggregate([
+            { $match: { status: 'active' } },
+            { $unwind: '$hashtags' },
+            { $group: { _id: '$hashtags', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 15 },
+        ])
+        res.json({ success: true, hashtags: result.map((item) => ({ tag: item._id, count: item.count })) })
+    } catch (error) { next(error) }
+}
+
+async function reportPost(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const post = await CampusFeedPost.findById(req.params.id)
+        if (!post || post.status !== 'active') return res.status(404).json({ success: false, message: 'Post not found' })
+        const reason = req.body?.reason
+        const allowedReasons = ['spam', 'harassment', 'inappropriate_content', 'scam', 'personal_information', 'other']
+        if (!allowedReasons.includes(reason)) return res.status(400).json({ success: false, message: 'Invalid report reason' })
+        const existing = await Report.findOne({ reporter: req.user._id, campusFeedPost: post._id, status: { $in: ['pending', 'reviewing'] } })
+        if (existing) return res.status(409).json({ success: false, message: 'You already reported this post' })
+        await Report.create({ reporter: req.user._id, campusFeedPost: post._id, reason, description: String(req.body?.description || '').trim().slice(0, 1000) })
+        res.status(201).json({ success: true, message: 'Report submitted' })
+    } catch (error) { next(error) }
+}
+
+async function reportComment(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.commentId)) return res.status(400).json({ success: false, message: 'Invalid comment ID' })
+        const comment = await CampusFeedComment.findById(req.params.commentId)
+        if (!comment || comment.status !== 'active') return res.status(404).json({ success: false, message: 'Comment not found' })
+        const reason = req.body?.reason
+        const allowedReasons = ['spam', 'harassment', 'inappropriate_content', 'scam', 'personal_information', 'other']
+        if (!allowedReasons.includes(reason)) return res.status(400).json({ success: false, message: 'Invalid report reason' })
+        const existing = await Report.findOne({ reporter: req.user._id, campusFeedComment: comment._id, status: { $in: ['pending', 'reviewing'] } })
+        if (existing) return res.status(409).json({ success: false, message: 'You already reported this comment' })
+        await Report.create({ reporter: req.user._id, campusFeedComment: comment._id, reason, description: String(req.body?.description || '').trim().slice(0, 1000) })
+        res.status(201).json({ success: true, message: 'Report submitted' })
+    } catch (error) { next(error) }
+}
+async function listComments(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1)
+        const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 30))
+        const comments = await CampusFeedComment.find({ post: req.params.id, status: 'active' }).populate('author', 'name college profileImage').sort({ createdAt: 1 }).skip((page - 1) * limit).limit(limit).select('+likes')
+        const total = await CampusFeedComment.countDocuments({ post: req.params.id, status: 'active' })
+        res.json({ success: true, comments: comments.map((comment) => serializeComment(comment, req.user?._id)), pagination: { page, limit, total, pages: Math.ceil(total / limit) } })
+    } catch (error) { next(error) }
+}
+
+async function createComment(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const post = await CampusFeedPost.findById(req.params.id)
+        if (!post || post.status !== 'active') return res.status(404).json({ success: false, message: 'Post not found' })
+        const content = String(req.body?.content || '').trim()
+        if (!content) return res.status(400).json({ success: false, message: 'Comment cannot be empty' })
+        if (content.length > MAX_COMMENT) return res.status(400).json({ success: false, message: `Comment must be ${MAX_COMMENT} characters or fewer` })
+        const parentComment = req.body?.parentComment && mongoose.isValidObjectId(req.body.parentComment) ? req.body.parentComment : null
+        const comment = await CampusFeedComment.create({
+            post: post._id,
+            author: req.user._id,
+            parentComment,
+            content,
+        })
+        post.commentCount = (post.commentCount || 0) + 1
+        await post.save()
+        const populated = await CampusFeedComment.findById(comment._id).populate('author', 'name college profileImage').select('+likes')
+        if (post.author.toString() !== req.user._id.toString()) {
+            try { await createAndEmitNotification({ recipient: post.author, type: 'system', title: 'New comment', message: `${req.user.name} commented on your post.` }) } catch {}
+        }
+        res.status(201).json({ success: true, comment: serializeComment(populated, req.user._id) })
+    } catch (error) { next(error) }
+}
+
+async function deleteComment(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.commentId)) return res.status(400).json({ success: false, message: 'Invalid comment ID' })
+        const comment = await CampusFeedComment.findById(req.params.commentId)
+        if (!comment || comment.status !== 'active') return res.status(404).json({ success: false, message: 'Comment not found' })
+        if (comment.author.toString() !== req.user._id.toString() && req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'You can only delete your own comments' })
+        comment.status = 'removed'
+        await comment.save()
+        await CampusFeedPost.updateOne({ _id: comment.post }, { $inc: { commentCount: -1 } })
+        res.json({ success: true, message: 'Comment deleted' })
+    } catch (error) { next(error) }
+}
+
+async function toggleCommentLike(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.commentId)) return res.status(400).json({ success: false, message: 'Invalid comment ID' })
+        const comment = await CampusFeedComment.findById(req.params.commentId).select('+likes')
+        if (!comment || comment.status !== 'active') return res.status(404).json({ success: false, message: 'Comment not found' })
+        const userId = req.user._id.toString()
+        const index = comment.likes.findIndex((id) => id.toString() === userId)
+        if (index >= 0) comment.likes.splice(index, 1)
+        else comment.likes.push(req.user._id)
+        await comment.save()
+        res.json({ success: true, likeCount: comment.likes.length, likedByMe: index < 0 })
+    } catch (error) { next(error) }
+}
+async function toggleLike(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })

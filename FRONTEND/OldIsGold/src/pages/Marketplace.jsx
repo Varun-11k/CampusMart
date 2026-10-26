@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import CategoryStrip from '../components/CategoryStrip'
 import ProductCard from '../components/ProductCard'
@@ -20,10 +20,16 @@ function Marketplace() {
     const { user, token } = useAuth()
     const { savedIds, pendingIds, loading: wishlistLoading, error: wishlistError, toggleSaved } = useWishlist()
     const [listings, setListings] = useState([])
+    const [marketCategories, setMarketCategories] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
-    const [category, setCategory] = useState('')
+    const [resultCount, setResultCount] = useState(0)
+    const [page, setPage] = useState(1)
+    const [pages, setPages] = useState(1)
+    const [category, setCategory] = useState(searchParams.get('category') || '')
+    const [subcategory, setSubcategory] = useState('')
     const [condition, setCondition] = useState('')
+    const [campus, setCampus] = useState('')
     const [price, setPrice] = useState('')
     const [sort, setSort] = useState('newest')
     const [naturalQuery, setNaturalQuery] = useState('')
@@ -34,21 +40,44 @@ function Marketplace() {
     const [aiError, setAiError] = useState('')
     const [flashMessage, setFlashMessage] = useState(location.state?.successMessage || '')
     const search = searchParams.get('search') || ''
-    const normalizedSearch = search.trim().toLowerCase()
 
     useEffect(() => {
         let active = true
 
-        productApi.list().then((data) => {
-            if (active) setListings(data.products || [])
+        productApi.categories().then((data) => {
+            if (active) setMarketCategories(data.categories || [])
         }).catch((requestError) => {
             if (active) setError(requestError.message)
-        }).finally(() => {
-            if (active) setLoading(false)
         })
 
         return () => { active = false }
     }, [])
+
+    useEffect(() => {
+        if (aiMode) return undefined
+        let active = true
+        setLoading(true)
+        setError('')
+        const timer = window.setTimeout(() => {
+            const [minPrice, maxPrice] = price === 'under-500' ? ['0', '499.99']
+                : price === '500-1000' ? ['500', '1000']
+                    : price === '1000-5000' ? ['1000.01', '5000']
+                        : price === 'above-5000' ? ['5000.01', ''] : ['', '']
+            const sortBy = sort === 'price-low' ? 'price-asc' : sort === 'price-high' ? 'price-desc' : 'newest'
+            productApi.list({ search: search.trim(), category, subcategory, condition, location: campus.trim(), minPrice, maxPrice, sort: sortBy, page, limit: 20 }).then((data) => {
+                if (!active) return
+                setListings(data.products || [])
+                setMarketCategories(data.categories || [])
+                setResultCount(data.count || 0)
+                setPages(data.pagination?.pages || 1)
+            }).catch((requestError) => {
+                if (active) setError(requestError.message)
+            }).finally(() => {
+                if (active) setLoading(false)
+            })
+        }, search ? 250 : 0)
+        return () => { active = false; window.clearTimeout(timer) }
+    }, [aiMode, campus, category, condition, page, price, search, sort, subcategory])
 
     useEffect(() => {
         setFlashMessage(location.state?.successMessage || '')
@@ -101,30 +130,23 @@ function Marketplace() {
 
     const handleNormalSearchChange = (value) => {
         if (aiMode) leaveAiSearch()
-        setSearchParams(value ? { search: value } : {}, { replace: true })
+        setPage(1)
+        const nextParams = {}
+        if (value) nextParams.search = value
+        if (category) nextParams.category = category
+        setSearchParams(nextParams, { replace: true })
     }
 
-    const filteredListings = useMemo(() => [...listings].filter((listing) => {
-        const lookup = `${listing.title || ''} ${listing.description || ''} ${listing.category || ''} ${listing.college || ''}`.toLowerCase()
-        const matchesSearch = !normalizedSearch || lookup.includes(normalizedSearch)
-        const matchesCategory = !category || listing.category === category
-        const matchesCondition = !condition || listing.condition === condition
-
-        const matchesPrice = !price || (
-            price === 'under-500' ? Number(listing.price) < 500
-                : price === '500-1000' ? Number(listing.price) >= 500 && Number(listing.price) <= 1000
-                    : price === '1000-5000' ? Number(listing.price) > 1000 && Number(listing.price) <= 5000
-                        : Number(listing.price) > 5000
-        )
-
-        return matchesSearch && matchesCategory && matchesCondition && matchesPrice
-    }).sort((first, second) => {
-        if (sort === 'price-low') return Number(first.price) - Number(second.price)
-        if (sort === 'price-high') return Number(second.price) - Number(first.price)
-        return new Date(second.createdAt || 0) - new Date(first.createdAt || 0)
-    }), [category, condition, listings, normalizedSearch, price, sort])
-
-    const displayedListings = aiMode ? aiResults || [] : filteredListings
+    const handleCategoryChange = (value) => {
+        leaveAiSearch()
+        setCategory(value)
+        setPage(1)
+        const nextParams = {}
+        if (search) nextParams.search = search
+        if (value) nextParams.category = value
+        setSearchParams(nextParams, { replace: true })
+    }
+    const displayedListings = aiMode ? aiResults || [] : listings
 
     const interpretedFilters = aiFilters ? [
         aiFilters.searchText && { field: 'searchText', label: `Search: ${aiFilters.searchText}` },
@@ -186,26 +208,33 @@ function Marketplace() {
 
             {flashMessage && <div className="form-success marketplace-success" role="status">{flashMessage}</div>}
 
-            {!aiMode && <CategoryStrip activeCategory={category} onSelect={(value) => { leaveAiSearch(); setCategory(value) }} />}
+            {!aiMode && <CategoryStrip categories={marketCategories} activeCategory={category} onSelect={(value) => { setSubcategory(''); handleCategoryChange(value) }} />}
 
             {!aiMode && <div className="marketplace-toolbar">
-                <p><strong>{filteredListings.length}</strong> listings</p>
+                <p><strong>{resultCount}</strong> listings</p>
                 <div className="filter-row">
-                    <select value={price} onChange={(event) => { leaveAiSearch(); setPrice(event.target.value) }} aria-label="Filter by price">
+                    {marketCategories.find((item) => item.name === category)?.subcategories?.length > 0 && (
+                        <select value={subcategory} onChange={(event) => { setSubcategory(event.target.value); setPage(1) }} aria-label="Filter by subcategory">
+                            <option value="">All subcategories</option>
+                            {marketCategories.find((item) => item.name === category).subcategories.map((item) => <option key={item} value={item}>{item}</option>)}
+                        </select>
+                    )}
+                    <input type="search" value={campus} onChange={(event) => { setCampus(event.target.value); setPage(1) }} placeholder="Campus or pickup location" aria-label="Filter by campus or pickup location" />
+                    <select value={price} onChange={(event) => { leaveAiSearch(); setPrice(event.target.value); setPage(1) }} aria-label="Filter by price">
                         <option value="">Any price</option>
                         <option value="under-500">Under ₹500</option>
                         <option value="500-1000">₹500–₹1,000</option>
                         <option value="1000-5000">₹1,000–₹5,000</option>
                         <option value="above-5000">Above ₹5,000</option>
                     </select>
-                    <select value={condition} onChange={(event) => { leaveAiSearch(); setCondition(event.target.value) }} aria-label="Filter by condition">
+                    <select value={condition} onChange={(event) => { leaveAiSearch(); setCondition(event.target.value); setPage(1) }} aria-label="Filter by condition">
                         <option value="">Any condition</option>
                         <option>New</option>
                         <option>Like New</option>
                         <option>Good</option>
                         <option>Fair</option>
                     </select>
-                    <select value={sort} onChange={(event) => { leaveAiSearch(); setSort(event.target.value) }} aria-label="Sort listings">
+                    <select value={sort} onChange={(event) => { leaveAiSearch(); setSort(event.target.value); setPage(1) }} aria-label="Sort listings">
                         <option value="newest">Newest</option>
                         <option value="price-low">Price: Low to High</option>
                         <option value="price-high">Price: High to Low</option>
@@ -225,6 +254,13 @@ function Marketplace() {
                             ))}
                         </div>
                     ) : <div className="empty-state"><strong>{aiMode ? 'No real listings match those interpreted filters.' : 'No products found.'}</strong></div>}
+            {!aiMode && pages > 1 && !loading && !error && (
+                <nav className="notification-pagination" aria-label="Marketplace pages">
+                    <button type="button" className="secondary-button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Previous</button>
+                    <span>Page {page} of {pages}</span>
+                    <button type="button" className="secondary-button" onClick={() => setPage((current) => Math.min(pages, current + 1))} disabled={page >= pages}>Next</button>
+                </nav>
+            )}
         </section>
     )
 }

@@ -1,6 +1,19 @@
-import { categories } from '../data/listings'
+const categoryStyles = [
+    { icon: '📚', color: 'mint' },
+    { icon: '💻', color: 'blue' },
+    { icon: '👕', color: 'peach' },
+    { icon: '👟', color: 'yellow' },
+    { icon: '🪑', color: 'lavender' },
+    { icon: '🏠', color: 'rose' },
+    { icon: '🏅', color: 'blue' },
+    { icon: '🎨', color: 'mint' },
+    { icon: '🎮', color: 'peach' },
+    { icon: '🚲', color: 'yellow' },
+    { icon: '🎸', color: 'lavender' },
+    { icon: '✨', color: 'rose' },
+]
 
-function CategoryStrip({ activeCategory = '', onSelect }) {
+function CategoryStrip({ activeCategory = '', onSelect, categories = [] }) {
     return (
         <div className="category-strip">
             <button
@@ -11,17 +24,22 @@ function CategoryStrip({ activeCategory = '', onSelect }) {
                 <span className="category-icon" aria-hidden="true">✦</span>
                 <span>All</span>
             </button>
-            {categories.map((category) => (
+            {categories.map((category, index) => {
+                const name = typeof category === 'string' ? category : category.name
+                const style = categoryStyles[index % categoryStyles.length]
+                return (
                 <button
-                    className={`category-tile category-${category.color}${activeCategory === category.name ? ' is-active' : ''}`}
-                    key={category.name}
+                    className={`category-tile category-${style.color}${activeCategory === name ? ' is-active' : ''}`}
+                    key={name}
                     type="button"
-                    onClick={() => onSelect?.(activeCategory === category.name ? '' : category.name)}
+                    onClick={() => onSelect?.(activeCategory === name ? '' : name)}
                 >
-                    <span className="category-icon" aria-hidden="true">{category.icon}</span>
-                    <span>{category.name}</span>
+                    <span className="category-icon" aria-hidden="true">{style.icon}</span>
+                    <span>{name}</span>
+                    {typeof category === 'object' && Number.isFinite(category.listingCount) && <small>{category.listingCount} listings</small>}
                 </button>
-            ))}
+                )
+            })}
         </div>
     )
 }

@@ -1,17 +1,59 @@
 import { useEffect, useState } from 'react'
-import { authApi } from '../services/api'
+import { authApi, authSecurityApi } from '../services/api'
 import { AuthContext } from './authContext'
 
+const TOKEN_KEY = 'campusmart_token'
+const USER_KEY = 'campusmart_user'
+
+function migrateLegacyRememberedSession() {
+  try {
+    if (!sessionStorage.getItem(TOKEN_KEY)) {
+      const legacyToken = localStorage.getItem(TOKEN_KEY)
+      if (legacyToken) sessionStorage.setItem(TOKEN_KEY, legacyToken)
+    }
+    if (!sessionStorage.getItem(USER_KEY)) {
+      const legacyUser = localStorage.getItem(USER_KEY)
+      if (legacyUser) sessionStorage.setItem(USER_KEY, legacyUser)
+    }
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+  } catch {
+    // Continue with in-memory authentication if browser storage is unavailable.
+  }
+}
+
+migrateLegacyRememberedSession()
+
+function readSessionValue(key) {
+  try { return sessionStorage.getItem(key) } catch { return null }
+}
+
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem('campusmart_token'))
+  const [token, setToken] = useState(() => readSessionValue(TOKEN_KEY))
   const [user, setUser] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('campusmart_user'))
+      return JSON.parse(readSessionValue(USER_KEY))
     } catch {
       return null
     }
   })
   const [loading, setLoading] = useState(Boolean(token))
+
+  const clearSession = () => {
+    try {
+      sessionStorage.removeItem(TOKEN_KEY)
+      sessionStorage.removeItem(USER_KEY)
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(USER_KEY)
+    } catch { /* Storage may be disabled; in-memory state is still cleared. */ }
+  }
+
+  const writeSession = (data) => {
+    try {
+      sessionStorage.setItem(TOKEN_KEY, data.token)
+      sessionStorage.setItem(USER_KEY, JSON.stringify(data.user))
+    } catch { /* Keep this sign-in in memory if browser storage is unavailable. */ }
+  }
 
   useEffect(() => {
     if (!token) return
@@ -20,11 +62,10 @@ export function AuthProvider({ children }) {
     authApi.me(token).then((data) => {
       if (!active) return
       setUser(data.user)
-      localStorage.setItem('campusmart_user', JSON.stringify(data.user))
+      try { sessionStorage.setItem(USER_KEY, JSON.stringify(data.user)) } catch { /* Keep the account in memory. */ }
     }).catch((error) => {
       if (!active || error.status !== 401) return
-      localStorage.removeItem('campusmart_token')
-      localStorage.removeItem('campusmart_user')
+      clearSession()
       setToken(null)
       setUser(null)
     }).finally(() => {
@@ -34,22 +75,40 @@ export function AuthProvider({ children }) {
     return () => { active = false }
   }, [token])
 
-  const authenticate = async (method, payload) => {
-    const data = await authApi[method](payload)
-    localStorage.setItem('campusmart_token', data.token)
-    localStorage.setItem('campusmart_user', JSON.stringify(data.user))
+  const storeAuth = (data) => {
+    clearSession()
+    writeSession(data)
     setToken(data.token)
     setUser(data.user)
-    return data.user
+    return data
   }
 
-  const logout = () => {
-    localStorage.removeItem('campusmart_token')
-    localStorage.removeItem('campusmart_user')
+  const login = async (payload) => (await storeAuth(await authApi.login(payload))).user
+  const register = async (payload) => {
+    const data = await authApi.register(payload)
+    storeAuth(data)
+    return data
+  }
+  const googleLogin = async (credential, college) => (await storeAuth(await authSecurityApi.google(credential, college))).user
+  const updateAuthenticatedUser = (data) => storeAuth(data)
+  const updateCurrentUser = (nextUser) => {
+    try { sessionStorage.setItem(USER_KEY, JSON.stringify(nextUser)) } catch { /* Keep the account in memory. */ }
+    setUser(nextUser)
+  }
+
+  const logout = async () => {
+    const currentToken = token
+    clearSession()
     setToken(null)
     setUser(null)
+    if (!currentToken) return true
+    try {
+      await authSecurityApi.logout(currentToken)
+      return true
+    } catch {
+      return false
+    }
   }
 
-  return <AuthContext.Provider value={{ user, token, loading, login: (payload) => authenticate('login', payload), register: (payload) => authenticate('register', payload), logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, token, loading, login, register, googleLogin, updateAuthenticatedUser, updateCurrentUser, logout }}>{children}</AuthContext.Provider>
 }
-

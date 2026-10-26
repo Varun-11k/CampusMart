@@ -5,8 +5,10 @@ const publicReportFields = 'type title category description location date images
 
 function escapeRegex(value) { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 100) }
 
-function buildLostFoundFilter({ type, query, category, location, date } = {}) {
-    const filter = { status: 'active' }
+function buildLostFoundFilter({ type, query, category, location, date, status } = {}) {
+    const filter = { moderationStatus: { $in: ['active', null] } }
+    if (status && ['active', 'under_review', 'claimed', 'resolved', 'returned', 'closed'].includes(status)) filter.status = status
+    else if (!status) filter.status = 'active'
     if (['lost', 'found'].includes(type)) filter.type = type
     if (typeof category === 'string' && category.trim()) filter.category = new RegExp(escapeRegex(category.trim()), 'i')
     if (typeof location === 'string' && location.trim()) filter.location = new RegExp(escapeRegex(location.trim()), 'i')
@@ -27,7 +29,7 @@ async function searchLostFoundReports({ filter, page = 1, limit = 20, includeRep
     const findQuery = LostFoundReport.find(filter).select(publicOnly ? publicReportFields : '-__v')
     if (includeReporter) findQuery.populate('reportedBy', publicReporterFields)
     const [reports, total] = await Promise.all([
-        findQuery.sort({ date: -1, createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+        findQuery.sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
         LostFoundReport.countDocuments(filter),
     ])
     return { reports, total }

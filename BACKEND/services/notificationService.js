@@ -7,6 +7,7 @@ async function createAndEmitNotification(notificationData) {
         .populate('product', 'title images status')
         .populate('conversation', 'product')
         .populate('campusExchange', 'title images status')
+        .populate('lostFoundReport', 'title type status')
 
     getIO()?.to(`user:${notification.recipient.toString()}`).emit('notification', {
         notification: populatedNotification,

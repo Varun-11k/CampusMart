@@ -6,6 +6,8 @@ import { reportApi } from '../services/api'
 const reasons = [
   ['spam', 'Spam'],
   ['harassment', 'Harassment'],
+  ['threats', 'Threats'],
+  ['bullying', 'Bullying'],
   ['inappropriate_content', 'Inappropriate content'],
   ['personal_information', 'Personal information'],
   ['other', 'Other'],
@@ -19,6 +21,7 @@ function CampusVoiceReportButton({ postId }) {
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
 
   const submit = async (event) => {
     event.preventDefault()
@@ -26,12 +29,13 @@ function CampusVoiceReportButton({ postId }) {
     setSending(true); setError('')
     try {
       await reportApi.create(token, { voicePostId: postId, reason, description })
-      setOpen(false); setReason(''); setDescription('')
+      setOpen(false); setReason(''); setDescription(''); setSubmitted(true)
     } catch (requestError) { setError(requestError.message) } finally { setSending(false) }
   }
 
   return <>
-    <button type="button" className="voice-action-button" onClick={() => user && token ? setOpen(true) : navigate('/login', { state: { from: '/campus-voices' } })}>Report</button>
+    <button type="button" className="voice-action-button" onClick={() => user && token ? setOpen(true) : navigate('/login', { state: { from: '/campus-voices' } })}>{submitted ? 'Reported' : 'Report'}</button>
+    {submitted && <span className="voice-report-success" role="status">Sent to moderators.</span>}
     {open && <div className="modal-backdrop" onMouseDown={() => !sending && setOpen(false)}><section className="report-modal" role="dialog" aria-modal="true" aria-labelledby={`voice-report-${postId}`} onMouseDown={(event) => event.stopPropagation()}>
       <p className="eyebrow">Community safety</p><h2 id={`voice-report-${postId}`}>Report this post</h2>
       <form className="form-stack" onSubmit={submit}><label>Reason<select required value={reason} onChange={(event) => setReason(event.target.value)}><option value="">Choose a reason</option>{reasons.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

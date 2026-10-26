@@ -14,6 +14,7 @@ const LostFoundReport = require('../models/LostFoundReport')
 const CampusExchangeRequest = require('../models/CampusExchangeRequest')
 const CouponRedemption = require('../models/CouponRedemption')
 const UserBadge = require('../models/UserBadge')
+const { isAuthorizedAdmin } = require('../middleware/adminMiddleware')
 const { awardPoints } = require('../services/pointsService')
 const { createAndEmitNotification } = require('../services/notificationService')
 
@@ -292,7 +293,7 @@ async function closePoll(req, res, next) {
         if (!validId(req.params.id)) return responseError(res, 400, 'Invalid poll ID')
         const poll = await CampusPoll.findById(req.params.id)
         if (!poll) return responseError(res, 404, 'Poll not found')
-        if (poll.author.toString() !== req.user._id.toString() && req.user.role !== 'admin') return responseError(res, 403, 'Only the poll creator or an admin can close this poll')
+        if (poll.author.toString() !== req.user._id.toString() && !isAuthorizedAdmin(req.user)) return responseError(res, 403, 'Only the poll creator or an admin can close this poll')
         poll.status = 'closed'; await poll.save(); res.json({ success: true, poll: serializePoll(poll, req.user._id) })
     } catch (error) { next(error) }
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { chatApi, productApi, reportApi, wishlistApi } from '../services/api'
 import SellerOfferManager from '../components/SellerOfferManager'
+import ProductCard from '../components/ProductCard'
 
 const formatInr = (value) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -22,6 +23,8 @@ function ProductDetails() {
     const navigate = useNavigate()
     const { user, token } = useAuth()
     const [product, setProduct] = useState(null)
+    const [relatedProducts, setRelatedProducts] = useState([])
+    const [selectedImage, setSelectedImage] = useState('')
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [saved, setSaved] = useState(false)
@@ -52,7 +55,10 @@ function ProductDetails() {
 
         productApi.byId(productId)
             .then((data) => {
-                if (active) setProduct(data.product)
+                if (active) {
+                    setProduct(data.product)
+                    setSelectedImage(data.product.images?.[0] || '')
+                }
             })
             .catch((requestError) => {
                 if (!active) return
@@ -66,6 +72,16 @@ function ProductDetails() {
                 if (active) setLoading(false)
             })
 
+        return () => { active = false }
+    }, [productId])
+
+    useEffect(() => {
+        let active = true
+        productApi.related(productId).then((data) => {
+            if (active) setRelatedProducts(data.products || [])
+        }).catch(() => {
+            if (active) setRelatedProducts([])
+        })
         return () => { active = false }
     }, [productId])
 
@@ -193,14 +209,14 @@ function ProductDetails() {
         }
     }
 
-    const handleMarkSold = async () => {
+    const handleUpdateStatus = async (status) => {
         if (!product || !token) return
 
         try {
             setIsMarkingSold(true)
-            const data = await productApi.update(token, product._id, { status: 'sold' })
+            const data = await productApi.update(token, product._id, { status })
             setProduct((current) => ({ ...current, ...data.product }))
-            setActionMessage('Listing marked as sold.')
+            setActionMessage(status === 'sold' ? 'Listing marked as sold.' : status === 'archived' ? 'Listing archived.' : 'Listing is available again.')
         } catch (requestError) {
             setError(requestError.message)
         } finally {
@@ -239,8 +255,6 @@ function ProductDetails() {
     if (!product) return null
 
     const images = Array.isArray(product.images) ? product.images.filter((item) => item && item.trim()) : []
-    const primaryImage = images[0]
-
     return (
         <section className="product-detail-page">
             <div className="product-detail-header">
@@ -249,16 +263,16 @@ function ProductDetails() {
 
             <article className="product-detail-card">
                 <div className="product-detail-visual">
-                    {primaryImage ? <img src={primaryImage} alt={product.title} /> : <span className="product-image-placeholder">No photo provided</span>}
+                    {selectedImage ? <img src={selectedImage} alt={product.title} /> : <span className="product-image-placeholder">No photo provided</span>}
                 </div>
 
                 <div className="product-detail-content">
                     <p className="eyebrow">{product.category} · {product.condition}</p>
                     <h1>{product.title}</h1>
-                    <p className="product-detail-price">{formatInr(product.price)}</p>
+                    <p className="product-detail-price">{formatInr(product.price)} {product.negotiable && <span>· Negotiable</span>}</p>
 
                     <div className="product-detail-actions">
-                        <button className="primary-button" type="button" onClick={handleContact}>Contact Seller</button>
+                        <button className="primary-button" type="button" onClick={handleContact} disabled={product.status !== 'available'}>Contact Seller</button>
                         <button className={`secondary-button${saved ? ' is-saved' : ''}`} type="button" onClick={handleSave} disabled={saving || checkingSaved} aria-pressed={saved}>
                             {checkingSaved ? 'Checking...' : saving ? 'Saving...' : saved ? '♥ Saved' : '♡ Save'}
                         </button>
@@ -274,13 +288,17 @@ function ProductDetails() {
                             <strong>{product.condition}</strong>
                         </div>
                         <div>
-                            <span className="meta-label">College</span>
-                            <strong>{product.college}</strong>
+                            <span className="meta-label">Pickup location</span>
+                            <strong>{product.location || product.college || 'Arrange with seller in chat'}</strong>
                         </div>
                         <div>
                             <span className="meta-label">Status</span>
                             <strong>{product.status || 'available'}</strong>
                         </div>
+                        {product.subcategory && <div><span className="meta-label">Subcategory</span><strong>{product.subcategory}</strong></div>}
+                        {product.quantity > 1 && <div><span className="meta-label">Available quantity</span><strong>{product.quantity}</strong></div>}
+                        {product.brand && <div><span className="meta-label">Brand</span><strong>{product.brand}</strong></div>}
+                        <div><span className="meta-label">Preference</span><strong>{product.salePreference === 'exchange' ? 'Exchange' : product.salePreference === 'both' ? 'Sale or exchange' : 'For sale'}</strong></div>
                         <div>
                             <span className="meta-label">Listed</span>
                             <strong>{formatDate(product.createdAt)}</strong>
@@ -290,22 +308,25 @@ function ProductDetails() {
                     <div className="product-detail-section">
                         <h2>About this item</h2>
                         <p>{product.description}</p>
+                        {product.specifications && <p><strong>Specifications:</strong> {product.specifications}</p>}
                     </div>
 
                     <div className="seller-card">
                         <p className="eyebrow">Seller</p>
                         <div className="seller-line">
                             <strong>{product.seller?.name || 'Student seller'}</strong>
-                            <span>{product.seller?.college || product.college}</span>
+                            <span>{product.seller?.college || product.college || 'Campus community member'}</span>
                         </div>
                     </div>
 
                     {isSeller && (
                         <div className="seller-actions">
-                            <button className="secondary-button" type="button" onClick={() => navigate('/sell')}>Edit Listing</button>
-                            <button className="secondary-button" type="button" onClick={handleMarkSold} disabled={isMarkingSold}>
-                                {isMarkingSold ? 'Updating...' : 'Mark as Sold'}
-                            </button>
+                            <button className="secondary-button" type="button" onClick={() => navigate(`/sell/${product._id}`)}>Edit Listing</button>
+                            {product.status === 'available' && <>
+                                <button className="secondary-button" type="button" onClick={() => handleUpdateStatus('sold')} disabled={isMarkingSold}>{isMarkingSold ? 'Updating...' : 'Mark as Sold'}</button>
+                                <button className="secondary-button" type="button" onClick={() => handleUpdateStatus('archived')} disabled={isMarkingSold}>Archive listing</button>
+                            </>}
+                            {product.status !== 'available' && <button className="secondary-button" type="button" onClick={() => handleUpdateStatus('available')} disabled={isMarkingSold}>{isMarkingSold ? 'Updating...' : 'Make available'}</button>}
                             <button className="secondary-button danger-button" type="button" onClick={handleDelete} disabled={isDeleting}>
                                 {isDeleting ? 'Deleting...' : 'Delete Listing'}
                             </button>
@@ -318,10 +339,16 @@ function ProductDetails() {
             {images.length > 1 && (
                 <div className="product-gallery">
                     {images.map((image, index) => (
-                        <img key={`${image}-${index}`} src={image} alt={`${product.title} ${index + 1}`} />
+                        <button key={`${image}-${index}`} type="button" className={`product-gallery-thumb${selectedImage === image ? ' is-active' : ''}`} onClick={() => setSelectedImage(image)} aria-label={`Show product image ${index + 1}`}>
+                            <img src={image} alt={`${product.title} ${index + 1}`} />
+                        </button>
                     ))}
                 </div>
             )}
+            {relatedProducts.length > 0 && <section className="related-products-section">
+                <p className="eyebrow">More to explore</p><h2>Related listings</h2>
+                <div className="product-grid">{relatedProducts.map((listing) => <ProductCard key={listing._id} listing={listing} />)}</div>
+            </section>}
 
             {reportOpen && (
                 <div className="modal-backdrop" onMouseDown={() => !submittingReport && setReportOpen(false)}>

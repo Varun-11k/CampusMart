@@ -15,10 +15,18 @@ const { setIO } = require('./socketManager')
 const port = process.env.PORT || 5000
 
 const httpServer = http.createServer(app)
+const socketOrigins = (process.env.CORS_ORIGINS || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173,http://127.0.0.1:5173'))
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
 const io = new Server(httpServer, {
     cors: {
-        origin: '*',
+        origin: socketOrigins,
         methods: ['GET', 'POST'],
+    },
+    allowRequest(req, callback) {
+        const origin = req.headers.origin
+        callback(null, !origin || socketOrigins.includes(origin))
     },
 })
 
@@ -35,9 +43,11 @@ io.use(async (socket, next) => {
     }
 
     try {
-        const payload = jwt.verify(token, process.env.JWT_SECRET)
-        const user = await User.findById(payload.userId).select('name profileImage')
-        if (!user) {
+        if (Buffer.byteLength(process.env.JWT_SECRET) < 32) return next(new Error('Authentication unavailable'))
+        const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+        if (typeof payload.userId !== 'string') return next(new Error('Authentication required'))
+        const user = await User.findById(payload.userId).select('name profileImage +tokenVersion +deactivatedAt')
+        if (!user || user.deactivatedAt || (payload.tokenVersion ?? 0) !== (user.tokenVersion || 0)) {
             return next(new Error('User no longer exists'))
         }
 

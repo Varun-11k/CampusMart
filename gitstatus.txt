@@ -1,0 +1,125 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   BACKEND/.env.example
+	modified:   BACKEND/app.js
+	modified:   BACKEND/controllers/adminController.js
+	modified:   BACKEND/controllers/aiController.js
+	modified:   BACKEND/controllers/aiSearchController.js
+	modified:   BACKEND/controllers/authController.js
+	modified:   BACKEND/controllers/campusVoiceController.js
+	modified:   BACKEND/controllers/chatController.js
+	modified:   BACKEND/controllers/lostFoundClaimController.js
+	modified:   BACKEND/controllers/lostFoundController.js
+	modified:   BACKEND/controllers/notificationController.js
+	modified:   BACKEND/controllers/productController.js
+	modified:   BACKEND/controllers/reportController.js
+	modified:   BACKEND/middleware/authMiddleware.js
+	modified:   BACKEND/middleware/errorHandler.js
+	modified:   BACKEND/models/CampusVoice.js
+	modified:   BACKEND/models/LostFoundClaim.js
+	modified:   BACKEND/models/LostFoundReport.js
+	modified:   BACKEND/models/Notification.js
+	modified:   BACKEND/models/Product.js
+	modified:   BACKEND/models/Report.js
+	modified:   BACKEND/models/User.js
+	modified:   BACKEND/package-lock.json
+	modified:   BACKEND/package.json
+	modified:   BACKEND/routes/adminRoutes.js
+	modified:   BACKEND/routes/authRoutes.js
+	modified:   BACKEND/routes/campusVoiceRoutes.js
+	modified:   BACKEND/routes/lostFoundRoutes.js
+	modified:   BACKEND/routes/productRoutes.js
+	modified:   BACKEND/routes/reportRoutes.js
+	modified:   BACKEND/server.js
+	modified:   BACKEND/services/aiMarketplaceSearchService.js
+	modified:   BACKEND/services/aiService.js
+	modified:   BACKEND/services/lostFoundSearchService.js
+	modified:   BACKEND/services/notificationService.js
+	modified:   BACKEND/tests/aiSmartSearch.test.js
+	modified:   BACKEND/tests/campusVoices.test.js
+	modified:   BACKEND/tests/lostFound.test.js
+	modified:   FRONTEND/OldIsGold/index.html
+	modified:   FRONTEND/OldIsGold/package-lock.json
+	modified:   FRONTEND/OldIsGold/package.json
+	modified:   FRONTEND/OldIsGold/src/App.css
+	modified:   FRONTEND/OldIsGold/src/App.jsx
+	modified:   FRONTEND/OldIsGold/src/components/CampusVoiceCard.jsx
+	modified:   FRONTEND/OldIsGold/src/components/CampusVoiceReportButton.jsx
+	modified:   FRONTEND/OldIsGold/src/components/CategoryStrip.jsx
+	modified:   FRONTEND/OldIsGold/src/components/SearchBar.jsx
+	modified:   FRONTEND/OldIsGold/src/context/AuthContext.jsx
+	modified:   FRONTEND/OldIsGold/src/layouts/AppLayout.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/AdminDashboard.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/CampusExchange.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/CampusVoiceCreate.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/CampusVoiceDetails.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/CampusVoices.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/Home.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/Login.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/LostFound.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/LostFoundDetails.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/LostFoundReportForm.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/Marketplace.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/Notifications.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/ProductDetails.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/Profile.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/Register.jsx
+	modified:   FRONTEND/OldIsGold/src/pages/SellProduct.jsx
+	modified:   FRONTEND/OldIsGold/src/services/api.js
+	modified:   FRONTEND/OldIsGold/vite.config.js
+	modified:   netlify.toml
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	BACKEND/controllers/productCategoryController.js
+	BACKEND/controllers/studentDashboardController.js
+	BACKEND/models/AuthToken.js
+	BACKEND/models/ProductCategory.js
+	BACKEND/services/authEmailService.js
+	BACKEND/services/authSessionService.js
+	BACKEND/services/authTokenService.js
+	BACKEND/services/campusVoiceModerationService.js
+	BACKEND/services/productCategoryService.js
+	BACKEND/tests/authSecurity.test.js
+	BACKEND/tests/marketplace.test.js
+	BACKEND/tests/studentDashboard.test.js
+	BACKEND_FILES.txt
+	FRONTEND/OldIsGold/.env.example
+	FRONTEND/OldIsGold/PWA_DEPLOYMENT.md
+	FRONTEND/OldIsGold/public/favicon-campusmart.svg
+	FRONTEND/OldIsGold/public/offline.html
+	FRONTEND/OldIsGold/public/robots.txt
+	FRONTEND/OldIsGold/src/components/AdminCampusVoiceModeration.jsx
+	FRONTEND/OldIsGold/src/components/AdminCategoryManager.jsx
+	FRONTEND/OldIsGold/src/components/AuthField.jsx
+	FRONTEND/OldIsGold/src/components/GoogleSignInButton.jsx
+	FRONTEND/OldIsGold/src/components/NetworkStatusBanner.jsx
+	FRONTEND/OldIsGold/src/components/PageMetadata.jsx
+	FRONTEND/OldIsGold/src/components/PwaInstallControl.jsx
+	FRONTEND/OldIsGold/src/pages/AccountSettings.jsx
+	FRONTEND/OldIsGold/src/pages/ForgotPassword.jsx
+	FRONTEND/OldIsGold/src/pages/LegalPage.jsx
+	FRONTEND/OldIsGold/src/pages/ResetPassword.jsx
+	FRONTEND/OldIsGold/src/pages/VerifyEmail.jsx
+	FRONTEND/OldIsGold/src/premium-ui.css
+	FRONTEND/OldIsGold/src/sw.js
+	FRONTEND_FILES.txt
+	_dir.txt
+	appdiff.txt
+	authchunk.txt
+	authchunk2.txt
+	backend_test_output.txt
+	diffstat.txt
+	envdiff.txt
+	filelist.txt
+	frontend_build_output.txt
+	frontend_lint_output.txt
+	frontendfiles.txt
+	git_status_output.txt
+	testfiles.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")

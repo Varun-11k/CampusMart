@@ -1,0 +1,27 @@
+User-agent: *
+Allow: /
+Disallow: /profile
+Disallow: /home
+Disallow: /settings
+Disallow: /wishlist
+Disallow: /notifications
+Disallow: /messages
+Disallow: /admin
+Disallow: /sell
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /lost-found/my-reports
+Disallow: /lost-found/report
+Disallow: /campus-voices/create
+Disallow: /campus-voices/my-posts
+Disallow: /resources/share
+Disallow: /resources/my-resources
+Disallow: /campus-exchange/create
+Disallow: /campus-exchange/my-exchanges
+Disallow: /campus-feed
+Disallow: /offline.html
+
+Sitemap: https://campusmarttt.netlify.app/sitemap.xml

@@ -20,6 +20,13 @@ const productSchema = new mongoose.Schema({
         type: String,
         required: true,
         trim: true,
+        maxlength: 80,
+    },
+    subcategory: {
+        type: String,
+        default: '',
+        trim: true,
+        maxlength: 80,
     },
     condition: {
         type: String,
@@ -32,8 +39,9 @@ const productSchema = new mongoose.Schema({
     },
     college: {
         type: String,
-        required: true,
+        default: '',
         trim: true,
+        maxlength: 120,
     },
     seller: {
         type: mongoose.Schema.Types.ObjectId,
@@ -42,8 +50,46 @@ const productSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['available', 'sold', 'reserved'],
+        enum: ['available', 'sold', 'reserved', 'archived'],
         default: 'available',
+    },
+    quantity: {
+        type: Number,
+        min: 0,
+        max: 10000,
+        default: 1,
+    },
+    brand: {
+        type: String,
+        default: '',
+        trim: true,
+        maxlength: 80,
+    },
+    specifications: {
+        type: String,
+        default: '',
+        trim: true,
+        maxlength: 1200,
+    },
+    negotiable: {
+        type: Boolean,
+        default: false,
+    },
+    salePreference: {
+        type: String,
+        enum: ['sale', 'exchange', 'both'],
+        default: 'sale',
+    },
+    location: {
+        type: String,
+        default: '',
+        trim: true,
+        maxlength: 160,
+    },
+    contactMethod: {
+        type: String,
+        enum: ['chat'],
+        default: 'chat',
     },
     moderationStatus: {
         type: String,
@@ -52,5 +98,10 @@ const productSchema = new mongoose.Schema({
         index: true,
     },
 }, { timestamps: true })
+
+productSchema.index({ seller: 1, createdAt: -1 })
+productSchema.index({ status: 1, moderationStatus: 1, createdAt: -1 })
+productSchema.index({ category: 1, subcategory: 1, status: 1, price: 1 })
+productSchema.index({ title: 'text', description: 'text', brand: 'text', category: 'text', subcategory: 'text' })
 
 module.exports = mongoose.model('Product', productSchema)

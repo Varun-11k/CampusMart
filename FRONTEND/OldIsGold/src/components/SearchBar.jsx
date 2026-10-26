@@ -7,7 +7,7 @@ function SearchBar({ value, onChange, compact = false, onKeyDown }) {
                 value={value}
                 onChange={(event) => onChange(event.target.value)}
                 onKeyDown={onKeyDown}
-                placeholder="Search by title, category or college"
+                placeholder="Search by title, brand, category, or description"
                 aria-label="Search listings"
             />
         </label>

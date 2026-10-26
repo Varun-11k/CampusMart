@@ -9,6 +9,7 @@ function notificationQuery(userId) {
         .populate('product', 'title images status')
         .populate('conversation', 'product')
         .populate('campusExchange', 'title images status')
+        .populate('lostFoundReport', 'title type status')
 }
 
 async function getNotifications(req, res, next) {
@@ -52,7 +53,7 @@ async function markNotificationRead(req, res, next) {
             { _id: req.params.id, recipient: req.user._id },
             { $set: { isRead: true } },
             { new: true, runValidators: true }
-        ).populate('product', 'title images status').populate('conversation', 'product').populate('campusExchange', 'title images status')
+        ).populate('product', 'title images status').populate('conversation', 'product').populate('campusExchange', 'title images status').populate('lostFoundReport', 'title type status')
 
         if (!notification) {
             return res.status(404).json({ success: false, message: 'Notification not found' })

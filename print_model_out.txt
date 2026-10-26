@@ -1,0 +1,50 @@
+const mongoose = require('mongoose')
+
+const mediaSchema = new mongoose.Schema({
+    url: { type: String, required: true, trim: true },
+    publicId: { type: String, trim: true, default: '' },
+    type: { type: String, enum: ['image', 'video'], required: true },
+    width: { type: Number, default: 0 },
+    height: { type: Number, default: 0 },
+    duration: { type: Number, default: 0 },
+}, { _id: false })
+
+const pollOptionSchema = new mongoose.Schema({
+    text: { type: String, required: true, trim: true, maxlength: 120 },
+    votes: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [] },
+}, { _id: true })
+
+const campusFeedPostSchema = new mongoose.Schema({
+    author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    content: { type: String, trim: true, maxlength: 3000, default: '' },
+    postType: { type: String, enum: ['text', 'photo', 'video', 'poll', 'reel'], default: 'text', index: true },
+    category: {
+        type: String,
+        enum: ['general', 'update', 'meme', 'food', 'sports', 'study', 'event', 'club', 'marketplace', 'lostfound', 'question'],
+        default: 'general',
+        index: true,
+    },
+    hashtags: { type: [String], default: [] },
+    campusTag: { type: String, trim: true, maxlength: 120, default: '' },
+    visibility: { type: String, enum: ['campus', 'public'], default: 'campus', index: true },
+    media: { type: [mediaSchema], default: [] },
+    poll: {
+        question: { type: String, trim: true, maxlength: 300, default: '' },
+        options: { type: [pollOptionSchema], default: [] },
+        expiresAt: { type: Date, default: null },
+    },
+    likes: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [], select: false },
+    saves: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [], select: false },
+    commentCount: { type: Number, default: 0 },
+    status: { type: String, enum: ['active', 'hidden', 'removed'], default: 'active', index: true },
+    moderationNotes: { type: String, maxlength: 1000, default: '', select: false },
+}, { timestamps: true })
+
+campusFeedPostSchema.index({ status: 1, createdAt: -1 })
+campusFeedPostSchema.index({ status: 1, postType: 1, createdAt: -1 })
+campusFeedPostSchema.index({ status: 1, category: 1, createdAt: -1 })
+campusFeedPostSchema.index({ author: 1, createdAt: -1 })
+campusFeedPostSchema.index({ hashtags: 1, createdAt: -1 })
+campusFeedPostSchema.index({ campusTag: 1, createdAt: -1 })
+
+module.exports = mongoose.model('CampusFeedPost', campusFeedPostSchema)

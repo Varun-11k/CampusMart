@@ -1,0 +1,9 @@
+}
+
+export const campusFeedApi = {
+  list: (params = {}, token) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))
+    return request(`/campus-feed${query.size ? `?${query}` : ''}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+  },
+  reels: (params = {}, token) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== '' && value !== undefined && value !== null))

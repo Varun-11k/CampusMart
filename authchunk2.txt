@@ -1,0 +1,161 @@
+﻿
+async function login(req, res, next) {
+    try {
+        const { email, password, rememberMe = false } = req.body || {}
+        if (!validateEmail(email) || typeof password !== 'string' || !password || typeof rememberMe !== 'boolean') {
+            return sendFieldErrors(res, {
+                ...(!validateEmail(email) ? { email: 'Enter a valid email address.' } : {}),
+                ...(typeof password !== 'string' || !password ? { password: 'Enter your password.' } : {}),
+                ...(typeof rememberMe !== 'boolean' ? { rememberMe: 'Invalid sign-in preference.' } : {}),
+            })
+        }
+
+        if (Buffer.byteLength(password) > 1024) {
+            return res.status(401).json({ success: false, message: 'Invalid email or password' })
+        }
+        const user = await User.findOne({ email: email.trim().toLowerCase() })
+            .select('+password +googleId +authProviders +tokenVersion +deactivatedAt')
+        const passwordMatches = user && !user.deactivatedAt && user.password
+            ? await bcrypt.compare(password, user.password)
+            : false
+
+        if (!passwordMatches) {
+            return res.status(401).json({ success: false, message: 'Invalid email or password' })
+        }
+
+        const token = createToken(user._id.toString(), user.tokenVersion || 0, rememberMe)
+        res.json({ success: true, token, user: publicUser(user) })
+    } catch (error) {
+        next(error)
+    }
+}
+
+async function googleLogin(req, res, next) {
+    try {
+        const clientId = process.env.GOOGLE_CLIENT_ID
+        if (!clientId) return res.status(503).json({ success: false, message: 'Google sign-in is not configured.' })
+
+        const credential = req.body?.credential
+        if (typeof credential !== 'string' || credential.length > 5000) {
+            return res.status(400).json({ success: false, message: 'A valid Google credential is required.' })
+        }
+
+        const client = new OAuth2Client(clientId)
+        let ticket
+        try {
+            ticket = await client.verifyIdToken({ idToken: credential, audience: clientId })
+        } catch {
+            return res.status(401).json({ success: false, message: 'Google sign-in could not be verified.' })
+        }
+        const claims = ticket.getPayload()
+        if (!claims || !claims.sub || !validateEmail(claims.email) || claims.email_verified !== true || !GOOGLE_ISSUERS.has(claims.iss)) {
+            return res.status(401).json({ success: false, message: 'Google could not verify this account.' })
+        }
+
+        const email = claims.email.trim().toLowerCase()
+        let user = await User.findOne({ email }).select('+googleId +tokenVersion +deactivatedAt +authProviders')
+        if (user?.deactivatedAt) return res.status(403).json({ success: false, message: 'This account has been deactivated.' })
+
+        if (user) {
+            if (user.googleId && user.googleId !== claims.sub) {
+                return res.status(409).json({ success: false, message: 'This email is linked to a different Google account.' })
+            }
+            if (!user.googleId) {
+                user.googleId = claims.sub
+                user.isVerified = true
+                user.authProviders = [...new Set([...(user.authProviders || ['password']), 'google'])]
+                await user.save()
+            }
+        } else {
+            const college = req.body?.college
+            const profileErrors = validateProfileFields({ name: claims.name || '', college })
+            if (profileErrors.college) {
+                return res.status(400).json({ success: false, message: 'Add your college to finish creating your account.', errors: { college: profileErrors.college } })
+            }
+            user = await User.create({
+                name: ((claims.name || email.split('@')[0]).trim().slice(0, 80) || 'CampusMart Student'),
+                email,
+                googleId: claims.sub,
+                college: college.trim(),
+                isVerified: true,
+                authProviders: ['google'],
+            })
+        }
+
+        const token = createToken(user._id.toString(), user.tokenVersion || 0)
+        return res.json({ success: true, token, user: publicUser(user) })
+    } catch (error) {
+        if (error.code === 11000) return res.status(409).json({ success: false, message: 'This Google account is already linked.' })
+        next(error)
+    }
+}
+
+async function forgotPassword(req, res) {
+    const genericResponse = { success: true, message: 'If an account matches that email, password reset instructions will be sent.' }
+    try {
+        const email = req.body?.email
+        if (!validateEmail(email)) return res.json(genericResponse)
+        const user = await User.findOne({ email: email.trim().toLowerCase() }).select('name email deactivatedAt')
+        if (!user || user.deactivatedAt || !getMailConfig() || !process.env.FRONTEND_URL) return res.json(genericResponse)
+
+        await AuthTokenDeleteForUser(user._id, 'password-reset')
+        const token = await issueToken(user._id, 'password-reset')
+        const link = buildFrontendLink('/reset-password', token)
+        if (!link) return res.json(genericResponse)
+
+        try {
+            await sendAccountEmail({
+                email: user.email,
+                subject: 'Reset your CampusMart password',
+                text: `Hi ${user.name},\n\nUse this single-use link to reset your password (expires in 30 minutes):\n${link}\n\nIf you did not request a reset, you can ignore this email.`,
+            })
+        } catch {
+            await AuthTokenDeleteForUser(user._id, 'password-reset')
+            console.error('CampusMart password reset email delivery failed')
+        }
+        return res.json(genericResponse)
+    } catch {
+        console.error('CampusMart password reset request could not be processed')
+        return res.json(genericResponse)
+    }
+}
+
+async function AuthTokenDeleteForUser(userId, purpose) {
+    await AuthToken.deleteMany({ user: userId, purpose, usedAt: null })
+}
+
+async function resetPassword(req, res, next) {
+    try {
+        const { token, password, confirmPassword } = req.body || {}
+        const errors = {}
+        if (!validatePassword(password)) errors.password = `Use at least ${PASSWORD_MIN_LENGTH} characters and no more than ${PASSWORD_MAX_BYTES} UTF-8 bytes.`
+        if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match.'
+        if (typeof token !== 'string' || token.length < 40 || token.length > 100) errors.token = 'This reset link is invalid or expired.'
+        if (Object.keys(errors).length) return sendFieldErrors(res, errors)
+
+        const authToken = await consumeToken(token, 'password-reset')
+        if (!authToken) return res.status(400).json({ success: false, message: 'This reset link is invalid or expired.' })
+
+        const hash = await bcrypt.hash(password, 12)
+        const user = await User.findOneAndUpdate(
+            { _id: authToken.user, deactivatedAt: null },
+            { $set: { password: hash, isVerified: true }, $addToSet: { authProviders: 'password' }, $inc: { tokenVersion: 1 } },
+            { new: true },
+        ).select('+tokenVersion')
+        if (!user) return res.status(400).json({ success: false, message: 'This reset link is invalid or expired.' })
+
+        disconnectUserSockets(user._id)
+        await AuthTokenDeleteForUser(user._id, 'password-reset')
+        return res.json({ success: true, message: 'Password updated. Please sign in again.' })
+    } catch (error) {
+        next(error)
+    }
+}
+
+async function verifyEmail(req, res) {
+    const token = req.body?.token
+    if (typeof token !== 'string' || token.length < 40 || token.length > 100) {
+        return res.status(400).json({ success: false, message: 'This verification link is invalid or expired.' })
+    }
+    const authToken = await consumeToken(token, 'email-verification')
+    if (!authToken) return res.status(400).json({ success: false, message: 'This verification link is invalid or expired.' })

@@ -17,13 +17,47 @@ const userSchema = new mongoose.Schema({
     },
     college: {
         type: String,
-        required: true,
+        default: '',
         trim: true,
+        maxlength: 120,
+    },
+    course: {
+        type: String,
+        default: '',
+        trim: true,
+        maxlength: 120,
+    },
+    branch: {
+        type: String,
+        default: '',
+        trim: true,
+        maxlength: 120,
+    },
+    academicYear: {
+        type: String,
+        enum: ['', '1', '2', '3', '4', '5', 'graduate', 'other'],
+        default: '',
+    },
+    themePreference: {
+        type: String,
+        enum: ['light', 'dark'],
+        default: 'light',
     },
     password: {
         type: String,
-        required: true,
-        minlength: 8,
+        required: function passwordRequired() { return this.isNew && !this.googleId },
+        minlength: 12,
+        select: false,
+    },
+    authProviders: {
+        type: [{ type: String, enum: ['password', 'google'] }],
+        default: ['password'],
+        select: false,
+    },
+    googleId: {
+        type: String,
+        unique: true,
+        sparse: true,
         select: false,
     },
     profileImage: {
@@ -38,6 +72,16 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['student', 'admin'],
         default: 'student',
+    },
+    tokenVersion: {
+        type: Number,
+        default: 0,
+        select: false,
+    },
+    deactivatedAt: {
+        type: Date,
+        default: null,
+        select: false,
     },
 }, { timestamps: true })
 

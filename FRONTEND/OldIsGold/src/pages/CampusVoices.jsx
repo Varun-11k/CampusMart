@@ -50,7 +50,7 @@ function CampusVoices() {
     } catch { setError(true) } finally { setLikePending('') }
   }
 
-  return <section className="campus-voices-page"><div className="campus-voices-heading"><div><p className="eyebrow">Campus community</p><h1>Campus Voices</h1><p>Share your thoughts with your campus community.</p></div><div className="voice-page-actions"><Link className="secondary-button" to="/campus-voices/my-posts">My Posts</Link><Link className="primary-button" to="/campus-voices/create">Share Something</Link></div></div>
+  return <section className="campus-voices-page"><div className="campus-voices-heading"><div><p className="eyebrow">Campus community</p><h1>Campus Voices</h1><p>{category === 'confession' ? 'Recent moderator-approved confessions, shared anonymously with other students.' : 'Share your thoughts with your campus community.'}</p></div><div className="voice-page-actions"><Link className="secondary-button" to="/campus-voices/my-posts">My Posts</Link><Link className="primary-button" to="/campus-voices/create">Share Something</Link></div></div>
     <CampusPolls />
     <div className="voice-tabs" role="tablist" aria-label="Campus Voices category">{tabs.map((tab) => <button key={tab.value || 'all'} type="button" role="tab" aria-selected={category === tab.value} className={category === tab.value ? 'is-active' : ''} onClick={() => chooseCategory(tab.value)}>{tab.label}</button>)}</div>
     <label className="voice-sort">Sort posts<select value={sort} onChange={(event) => { setPage(1); setSort(event.target.value) }}><option value="recent">Most recent</option><option value="most_liked">Most discussed</option></select></label>

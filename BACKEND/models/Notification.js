@@ -9,7 +9,7 @@ const notificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['message', 'product_sold', 'wishlist', 'system', 'offer', 'coupon', 'challenge', 'poll'],
+        enum: ['message', 'product_sold', 'wishlist', 'system', 'offer', 'coupon', 'challenge', 'poll', 'lost_found'],
         required: true,
     },
     title: {
@@ -37,6 +37,11 @@ const notificationSchema = new mongoose.Schema({
     campusExchange: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'CampusExchange',
+        default: undefined,
+    },
+    lostFoundReport: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LostFoundReport',
         default: undefined,
     },
     isRead: {

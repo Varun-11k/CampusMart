@@ -26,6 +26,21 @@ const reportSchema = new mongoose.Schema({
         ref: 'CampusExchange',
         default: undefined,
     },
+    campusFeedPost: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'CampusFeedPost',
+        default: undefined,
+    },
+    campusFeedComment: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'CampusFeedComment',
+        default: undefined,
+    },
+    lostFoundReport: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LostFoundReport',
+        default: undefined,
+    },
     reportedUser: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -34,7 +49,7 @@ const reportSchema = new mongoose.Schema({
     reason: {
         type: String,
         required: true,
-        enum: ['scam', 'incorrect_information', 'spam', 'prohibited_item', 'harassment', 'inappropriate_content', 'personal_information', 'copyright_concern', 'incorrect_resource', 'malicious_link', 'other'],
+        enum: ['scam', 'incorrect_information', 'spam', 'prohibited_item', 'harassment', 'threats', 'bullying', 'inappropriate_content', 'personal_information', 'copyright_concern', 'incorrect_resource', 'malicious_link', 'other'],
     },
     description: {
         type: String,
@@ -59,6 +74,7 @@ reportSchema.index({ reporter: 1, product: 1, status: 1 })
 reportSchema.index({ reporter: 1, voicePost: 1, status: 1 })
 reportSchema.index({ reporter: 1, resource: 1, status: 1 })
 reportSchema.index({ reporter: 1, campusExchange: 1, status: 1 })
+reportSchema.index({ reporter: 1, lostFoundReport: 1, status: 1 })
 reportSchema.index({ status: 1, createdAt: -1 })
 
 module.exports = mongoose.model('Report', reportSchema)

@@ -4,7 +4,7 @@ import { useAuth } from '../context/useAuth'
 import { lostFoundApi } from '../services/api'
 
 const categories = ['Electronics', 'Wallets & Cards', 'Keys', 'Clothing', 'Books', 'Bags', 'Other']
-const emptyForm = (type) => ({ type, title: '', category: '', description: '', location: '', date: '', images: [] })
+const emptyForm = (type) => ({ type, title: '', category: '', description: '', location: '', date: '', contactPreference: 'in_app', images: [] })
 
 function LostFoundReportForm() {
   const { user, token, loading: authLoading } = useAuth()
@@ -17,14 +17,15 @@ function LostFoundReportForm() {
   const [loading, setLoading] = useState(Boolean(editId))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   useEffect(() => {
     if (!editId || !token) return undefined
     let active = true
     lostFoundApi.get(editId, token).then(({ report }) => {
       if (!active) return
-      if (String(report.reportedBy?._id) !== String(user?._id) || report.status !== 'active') { setError('Only your active reports can be edited.'); return }
-      setForm({ type: report.type, title: report.title, category: report.category, description: report.description, location: report.location, date: new Date(report.date).toISOString().slice(0, 10), images: report.images || [] })
+      if (!report.isMine || report.status !== 'active') { setError('Only your active reports can be edited.'); return }
+      setForm({ type: report.type, title: report.title, category: report.category, description: report.description, location: report.location, date: new Date(report.date).toISOString().slice(0, 10), contactPreference: report.contactPreference || 'in_app', images: report.images || [] })
     }).catch((requestError) => { if (active) setError(requestError.message) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [editId, token, user?._id])
@@ -44,7 +45,8 @@ function LostFoundReportForm() {
     event.preventDefault(); if (submitting) return
     setSubmitting(true); setError('')
     try {
-      const result = editId ? await lostFoundApi.update(token, editId, form, files) : await lostFoundApi.create(token, form, files)
+      const onProgress = (value) => setUploadProgress(value)
+      const result = editId ? await lostFoundApi.update(token, editId, form, files, onProgress) : await lostFoundApi.create(token, form, files, onProgress)
       navigate(`/lost-found/${result.report._id}`, { replace: true, state: { notice: editId ? 'Report updated.' : 'Your report was submitted.' } })
     } catch (requestError) { setError(requestError.message) } finally { setSubmitting(false) }
   }
@@ -57,9 +59,11 @@ function LostFoundReportForm() {
     <label>Description<textarea required maxLength={2000} rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label>Location<input required maxLength={160} value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="Where was it last seen or found?" /></label>
     <label>Date<input required type="date" max={new Date().toISOString().slice(0, 10)} value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
+    <label>Contact preference<select value={form.contactPreference} onChange={(event) => setForm({ ...form, contactPreference: event.target.value })}><option value="in_app">In-app messages and claims</option><option value="claims_only">Claims only (no direct message)</option></select></label>
+    <p className="form-note">Keep phone numbers, student IDs, and private addresses out of the description and photos. Use CampusMart to coordinate safely.</p>
     <label>Images (up to 5)<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(event) => changeFiles(event.target.files)} /></label>
     {(form.images.length > 0 || previews.length > 0) && <div className="lost-found-previews">{form.images.map((url, index) => <div key={url}><img src={url} alt={`Current item image ${index + 1}`} /><button type="button" onClick={() => removeImage(index)} aria-label="Remove image">×</button></div>)}{previews.map((url, index) => <div key={url}><img src={url} alt={`New image preview ${index + 1}`} /></div>)}</div>}
-    {error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button" type="submit" disabled={submitting || loading}>{submitting ? 'Uploading and submitting...' : editId ? 'Save changes' : 'Submit report'}</button>
+    {error && <p className="form-error" role="alert">{error}</p>}{submitting && files.length > 0 && <label className="form-note">Upload progress: {uploadProgress}%<progress max="100" value={uploadProgress} /></label>}<button className="primary-button" type="submit" disabled={submitting || loading}>{submitting ? files.length ? `Uploading ${uploadProgress}%...` : 'Submitting...' : editId ? 'Save changes' : 'Submit report'}</button>
   </form>}</section>
 }
 

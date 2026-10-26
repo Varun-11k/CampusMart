@@ -6,7 +6,11 @@ function notFoundHandler(req, res) {
 }
 
 function errorHandler(error, req, res, next) {
-    console.error(error.stack || error.message)
+    if (process.env.NODE_ENV === 'production') {
+        console.error('Request failed:', error.name || 'Error')
+    } else {
+        console.error(error.stack || error.message)
+    }
 
     res.status(error.statusCode || 500).json({
         success: false,

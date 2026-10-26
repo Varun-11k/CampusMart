@@ -5,28 +5,30 @@ const User = require('../models/User')
 const CampusVoice = require('../models/CampusVoice')
 const Resource = require('../models/Resource')
 const CampusExchange = require('../models/CampusExchange')
+const LostFoundReport = require('../models/LostFoundReport')
 
-const reasons = ['scam', 'incorrect_information', 'spam', 'prohibited_item', 'harassment', 'inappropriate_content', 'personal_information', 'copyright_concern', 'incorrect_resource', 'malicious_link', 'other']
+const reasons = ['scam', 'incorrect_information', 'spam', 'prohibited_item', 'harassment', 'threats', 'bullying', 'inappropriate_content', 'personal_information', 'copyright_concern', 'incorrect_resource', 'malicious_link', 'other']
 const duplicateStatuses = ['pending', 'reviewing']
 
 async function createReport(req, res, next) {
     try {
         const body = req.body || {}
-        const allowedFields = ['productId', 'reportedUserId', 'voicePostId', 'resourceId', 'campusExchangeId', 'reason', 'description']
+        const allowedFields = ['productId', 'reportedUserId', 'voicePostId', 'resourceId', 'campusExchangeId', 'lostFoundReportId', 'reason', 'description']
         if (Object.keys(body).some((field) => !allowedFields.includes(field))) {
             return res.status(400).json({ success: false, message: 'Only productId, reportedUserId, voicePostId, resourceId, campusExchangeId, reason, and description are accepted' })
         }
 
-        const { productId, reportedUserId, voicePostId, resourceId, campusExchangeId, reason, description = '' } = body
+        const { productId, reportedUserId, voicePostId, resourceId, campusExchangeId, lostFoundReportId, reason, description = '' } = body
 
         if (!reasons.includes(reason)) {
             return res.status(400).json({ success: false, message: `reason must be one of: ${reasons.join(', ')}` })
         }
 
-        if (!productId && !reportedUserId && !voicePostId && !resourceId && !campusExchangeId) return res.status(400).json({ success: false, message: 'A report target is required' })
+        if (!productId && !reportedUserId && !voicePostId && !resourceId && !campusExchangeId && !lostFoundReportId) return res.status(400).json({ success: false, message: 'A report target is required' })
         if (voicePostId && (productId || reportedUserId)) return res.status(400).json({ success: false, message: 'A Campus Voice report must target only voicePostId' })
         if (resourceId && (productId || reportedUserId || voicePostId)) return res.status(400).json({ success: false, message: 'A resource report must target only resourceId' })
         if (campusExchangeId && (productId || reportedUserId || voicePostId || resourceId)) return res.status(400).json({ success: false, message: 'A Campus Exchange report must target only campusExchangeId' })
+        if (lostFoundReportId && (productId || reportedUserId || voicePostId || resourceId || campusExchangeId)) return res.status(400).json({ success: false, message: 'A Lost & Found report must target only lostFoundReportId' })
 
         if (productId && !mongoose.isValidObjectId(productId)) {
             return res.status(400).json({ success: false, message: 'Invalid product ID' })
@@ -40,6 +42,7 @@ async function createReport(req, res, next) {
         }
         if (resourceId && !mongoose.isValidObjectId(resourceId)) return res.status(400).json({ success: false, message: 'Invalid resource ID' })
         if (campusExchangeId && !mongoose.isValidObjectId(campusExchangeId)) return res.status(400).json({ success: false, message: 'Invalid Campus Exchange ID' })
+        if (lostFoundReportId && !mongoose.isValidObjectId(lostFoundReportId)) return res.status(400).json({ success: false, message: 'Invalid Lost & Found report ID' })
 
         if (typeof description !== 'string' || description.length > 1000) {
             return res.status(400).json({ success: false, message: 'description must be a string of at most 1000 characters' })
@@ -53,6 +56,7 @@ async function createReport(req, res, next) {
         }
         if (resourceId && !await Resource.exists({ _id: resourceId, status: 'active' })) return res.status(404).json({ success: false, message: 'Resource not found' })
         if (campusExchangeId && !await CampusExchange.exists({ _id: campusExchangeId, status: 'active', moderationStatus: 'active' })) return res.status(404).json({ success: false, message: 'Campus Exchange listing not found' })
+        if (lostFoundReportId && !await LostFoundReport.exists({ _id: lostFoundReportId })) return res.status(404).json({ success: false, message: 'Lost & Found report not found' })
 
         if (reportedUserId) {
             if (reportedUserId === req.user._id.toString()) {
@@ -89,6 +93,10 @@ async function createReport(req, res, next) {
             const duplicate = await Report.exists({ reporter: req.user._id, campusExchange: campusExchangeId, status: { $in: duplicateStatuses } })
             if (duplicate) return res.status(409).json({ success: false, message: 'You already have an active report for this Campus Exchange listing' })
         }
+        if (lostFoundReportId) {
+            const duplicate = await Report.exists({ reporter: req.user._id, lostFoundReport: lostFoundReportId, status: { $in: duplicateStatuses } })
+            if (duplicate) return res.status(409).json({ success: false, message: 'You already have an active report for this Lost & Found post' })
+        }
 
         const report = await Report.create({
             reporter: req.user._id,
@@ -96,6 +104,7 @@ async function createReport(req, res, next) {
             voicePost: voicePostId || undefined,
             resource: resourceId || undefined,
             campusExchange: campusExchangeId || undefined,
+            lostFoundReport: lostFoundReportId || undefined,
             reportedUser: reportedUserId || undefined,
             reason,
             description: description.trim(),

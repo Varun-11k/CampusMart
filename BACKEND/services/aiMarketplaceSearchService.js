@@ -1,7 +1,8 @@
 const { generateContent, extractText } = require('./geminiService')
+const { DEFAULT_CATEGORIES } = require('./productCategoryService')
 const MAX_QUERY_LENGTH = 100
 const MAX_PRICE = 100_000_000
-const categories = ['Books', 'Electronics', 'Hostel', 'Fashion', 'Accessories', 'Sports', 'Other']
+const categories = [...new Set(DEFAULT_CATEGORIES.flatMap((category) => [category.name, ...category.aliases]))]
 const conditions = ['New', 'Like New', 'Good', 'Fair']
 const sorts = ['price_asc', 'price_desc', 'newest']
 const fields = ['query', 'category', 'minPrice', 'maxPrice', 'condition', 'location', 'sort']

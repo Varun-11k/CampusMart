@@ -1,0 +1,2 @@
+STATUS 404
+{"success":false,"message":"Route not found: GET /api/campus-feed"}

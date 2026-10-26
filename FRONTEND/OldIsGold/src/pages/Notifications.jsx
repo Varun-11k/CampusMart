@@ -65,9 +65,11 @@ function Notifications() {
       const conversationId = notification.conversation?._id || notification.conversation
       const productId = notification.product?._id || notification.product
       const exchangeId = notification.campusExchange?._id || notification.campusExchange
+      const lostFoundReportId = notification.lostFoundReport?._id || notification.lostFoundReport
       if (conversationId) navigate(`/messages/${conversationId}`)
       else if (productId) navigate(`/products/${productId}`)
       else if (exchangeId) navigate(`/campus-exchange/${exchangeId}`)
+      else if (lostFoundReportId) navigate(`/lost-found/${lostFoundReportId}`)
     } catch (requestError) {
       setError(requestError.message)
     }

@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { lostFoundApi } from '../services/api'
+import LoadingSkeletons from '../components/LoadingSkeletons'
 
 const categories = ['Electronics', 'Wallets & Cards', 'Keys', 'Clothing', 'Books', 'Bags', 'Other']
 const formatDate = (value) => new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' }).format(new Date(value))
 
 function LostFound() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [filters, setFilters] = useState({ search: '', category: '', location: '', date: '' })
+  const [filters, setFilters] = useState({ search: '', category: '', location: '', date: '', status: '' })
   const [reports, setReports] = useState([])
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const type = searchParams.get('type') || 'lost'
@@ -19,7 +21,7 @@ function LostFound() {
     let active = true
     setLoading(true); setError('')
     lostFoundApi.list({ ...filters, type, page, limit: 12 }).then((data) => {
-      if (active) { setReports(data.reports || []); setPages(data.pages || 1) }
+      if (active) { setReports(data.reports || []); setPages(data.pages || 1); setTotal(data.total || 0) }
     }).catch((requestError) => { if (active) setError(requestError.message) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [filters, type, page])
@@ -31,8 +33,9 @@ function LostFound() {
     <div className="lost-found-actions"><Link className="primary-button" to="/lost-found/report?type=lost">Report Lost</Link><Link className="secondary-button" to="/lost-found/report?type=found">Report Found</Link></div>
     <div className="lost-found-tabs" role="tablist" aria-label="Report type"><button type="button" role="tab" aria-selected={type === 'lost'} className={type === 'lost' ? 'is-active' : ''} onClick={() => changeType('lost')}>Lost</button><button type="button" role="tab" aria-selected={type === 'found'} className={type === 'found' ? 'is-active' : ''} onClick={() => changeType('found')}>Found</button></div>
     <div className="lost-found-search"><input aria-label="Search reports" placeholder="Search item name or details" value={filters.search} onChange={(event) => changeFilter('search', event.target.value)} /><span aria-hidden="true">⌕</span></div>
-    <div className="lost-found-filters"><label>Category<select value={filters.category} onChange={(event) => changeFilter('category', event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label><label>Location<input placeholder="e.g. Library" value={filters.location} onChange={(event) => changeFilter('location', event.target.value)} /></label><label>Date<input type="date" value={filters.date} onChange={(event) => changeFilter('date', event.target.value)} /></label></div>
-    {error && <p className="form-error" role="alert">{error}</p>}{loading ? <div className="empty-state">Loading reports...</div> : reports.length ? <div className="lost-found-grid">{reports.map((report) => <Link className="lost-found-card" to={`/lost-found/${report._id}`} key={report._id}><div className="lost-found-card-image">{report.images?.[0] ? <img src={report.images[0]} alt="" /> : <span aria-hidden="true">{report.type === 'lost' ? '🔎' : '📦'}</span>}<span className={`lost-found-type ${report.type}`}>{report.type}</span></div><div className="lost-found-card-body"><div className="lost-found-card-top"><span className="lost-found-category">{report.category}</span><span className="lost-found-status">{report.status}</span></div><h2>{report.title}</h2><p>{report.location}</p><time dateTime={report.date}>{formatDate(report.date)}</time></div></Link>)}</div> : <div className="empty-state"><strong>No active reports found.</strong><span>Try changing your filters or submit a report.</span></div>}
+    <div className="lost-found-filters"><label>Category<select value={filters.category} onChange={(event) => changeFilter('category', event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label><label>Location<input placeholder="e.g. Library" value={filters.location} onChange={(event) => changeFilter('location', event.target.value)} /></label><label>Date<input type="date" value={filters.date} onChange={(event) => changeFilter('date', event.target.value)} /></label><label>Status<select value={filters.status} onChange={(event) => changeFilter('status', event.target.value)}><option value="">Open reports</option><option value="under_review">Under review</option><option value="claimed">Claimed</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></label></div>
+    {!loading && !error && <p className="form-note" aria-live="polite">{total} {total === 1 ? 'report' : 'reports'} found</p>}
+    {error && <p className="form-error" role="alert">{error}</p>}{loading ? <LoadingSkeletons variant="resource" count={6} label="Loading Lost & Found reports" /> : reports.length ? <div className="lost-found-grid">{reports.map((report) => <Link className="lost-found-card" to={`/lost-found/${report._id}`} key={report._id}><div className="lost-found-card-image">{report.images?.[0] ? <img src={report.images[0]} alt="" loading="lazy" decoding="async" /> : <span aria-hidden="true">{report.type === 'lost' ? '🔎' : '📦'}</span>}<span className={`lost-found-type ${report.type}`}>{report.type}</span></div><div className="lost-found-card-body"><div className="lost-found-card-top"><span className="lost-found-category">{report.category}</span><span className={`lost-found-status status-${report.status}`}>{report.status === 'active' ? 'Open' : report.status.replaceAll('_', ' ')}</span></div><h2>{report.title}</h2><p>{report.location}</p><time dateTime={report.date}>{formatDate(report.date)}</time></div></Link>)}</div> : <div className="empty-state"><strong>No reports found.</strong><span>Try changing your filters or submit a report.</span></div>}
     {pages > 1 && <div className="lost-found-pagination"><button className="secondary-button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</button><span>Page {page} of {pages}</span><button className="secondary-button" disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</button></div>}
   </section>
 }

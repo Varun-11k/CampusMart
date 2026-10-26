@@ -1,0 +1,81 @@
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 250)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const loadPosts = useCallback(async (targetPage = 1) => {
+    setLoading(true); setError('')
+    try {
+      const params = { page: targetPage, limit: 12, tab, search: debouncedSearch }
+      if (typeFilter) params.type = typeFilter
+      if (searchParams.get('hashtag')) params.hashtag = searchParams.get('hashtag')
+      let data
+      if (mode === 'saved') data = await campusFeedApi.saved(token, targetPage)
+      else if (mode === 'mine') data = await campusFeedApi.mine(token, targetPage)
+      else data = tab === 'reels'
+        ? await campusFeedApi.reels(params, token)
+        : await campusFeedApi.list(params, token)
+      setPosts(data.posts || [])
+      setPages(data.pagination?.pages || 1)
+      setPage(targetPage)
+    } catch (requestError) {
+      setError(requestError.message || 'Could not load feed')
+    } finally {
+      setLoading(false)
+    }
+  }, [mode, tab, typeFilter, debouncedSearch, token, searchParams])
+
+  useEffect(() => { loadPosts(1) }, [loadPosts])
+  useEffect(() => {
+    campusFeedApi.trendingHashtags().then((data) => setHashtags(data.hashtags || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (tab && tab !== 'latest') next.set('tab', tab); else next.delete('tab')
+      if (typeFilter) next.set('type', typeFilter); else next.delete('type')
+      if (search) next.set('search', search); else next.delete('search')
+      return next
+    }, { replace: true })
+  }, [tab, typeFilter, search, setSearchParams])
+
+  const handleFiles = (event) => {
+    const selected = Array.from(event.target.files || [])
+    if (!selected.length) return
+    const next = [...files, ...selected].slice(0, 6)
+    setFiles(next)
+    setPreviews(next.map((file) => ({ file, url: URL.createObjectURL(file), isVideo: file.type.startsWith('video/') })))
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const removeFile = (index) => {
+    const next = files.filter((_, i) => i !== index)
+    setFiles(next)
+    setPreviews(next.map((file) => ({ file, url: URL.createObjectURL(file), isVideo: file.type.startsWith('video/') })))
+  }
+
+  const resetComposer = () => {
+    setContent(''); setCategory('general'); setComposerHashtags(''); setCampusTag(user?.college || '')
+    setVisibility('campus'); setFiles([]); setPreviews([]); setPollQuestion(''); setPollOptions(['', '']); setShowPoll(false); setComposerError('')
+  }
+
+  const submitPost = async (event) => {
+    event.preventDefault()
+    if (!token) return navigate('/login', { state: { from: '/campus-feed' } })
+    if (!content.trim() && files.length === 0 && !showPoll) {
+      setComposerError('Add text, media, or a poll before posting.'); return
+    }
+    setSubmitting(true); setComposerError('')
+    try {
+      const payload = {
+        content: content.trim(),
+        category,
+        hashtags: composerHashtags.trim(),
+        campusTag: campusTag.trim(),
+        visibility,
+      }
+      if (showPoll) payload.poll = { question: pollQuestion.trim(), options: pollOptions.map((v) => v.trim()).filter(Boolean) }
+      await campusFeedApi.create(token, payload, files)
+      resetComposer()
+      await loadPosts(1)

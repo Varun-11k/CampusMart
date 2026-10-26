@@ -2,7 +2,7 @@ const { generateDescription, estimatePrice, AIServiceError } = require('../servi
 
 const conditions = ['New', 'Like New', 'Good', 'Fair']
 const fields = ['title', 'category', 'condition', 'college', 'details']
-const estimateFields = ['title', 'category', 'condition', 'age', 'originalPrice', 'details']
+const estimateFields = ['title', 'category', 'condition', 'age', 'originalPrice', 'details', 'brand', 'model']
 
 function validateRequest(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -51,6 +51,9 @@ function validateEstimateRequest(body) {
     }
     if (body.details.trim().length < 8) return 'Add more item details to get a useful estimate'
     if (body.details.trim().length > 2000) return 'details must be 2000 characters or fewer'
+    for (const field of ['brand', 'model']) {
+        if (body[field] !== undefined && (typeof body[field] !== 'string' || body[field].trim().length > 80)) return `${field} must be 80 characters or fewer`
+    }
 
     const originalPrice = typeof body.originalPrice === 'number'
         ? body.originalPrice
@@ -102,6 +105,8 @@ async function createPriceEstimate(req, res) {
             age: req.body.age.trim(),
             originalPrice: Number(req.body.originalPrice),
             details: req.body.details.trim(),
+            brand: (req.body.brand || '').trim(),
+            model: (req.body.model || '').trim(),
         })
         res.json(estimate)
     } catch (error) {

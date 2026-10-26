@@ -1,0 +1,6 @@
+◇ injected env (13) from .env
+connected
+listening 61097
+feed status 200
+feed body {"success":true,"posts":[],"pagination":{"page":1,"limit":15,"total":0,"pages":0}}
+FORCE EXIT

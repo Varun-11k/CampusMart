@@ -124,8 +124,9 @@ async function createLostFoundConversation(req, res, next) {
     try {
         const { reportId } = req.body || {}
         if (!mongoose.isValidObjectId(reportId)) return res.status(400).json({ success: false, message: 'A valid reportId is required' })
-        const report = await LostFoundReport.findById(reportId).select('reportedBy title status images category type')
-        if (!report || report.status === 'closed') return res.status(404).json({ success: false, message: 'Report not found or closed' })
+        const report = await LostFoundReport.findById(reportId).select('reportedBy title status images category type contactPreference moderationStatus')
+        if (!report || report.status !== 'active' || report.moderationStatus === 'hidden' || report.moderationStatus === 'removed') return res.status(404).json({ success: false, message: 'Report not found or unavailable' })
+        if (report.contactPreference === 'claims_only') return res.status(403).json({ success: false, message: 'The reporter accepts claims only for this post' })
         const ownerId = report.reportedBy.toString()
         const participantId = req.user._id.toString()
         if (ownerId === participantId) return res.status(400).json({ success: false, message: 'You cannot start a conversation with yourself' })

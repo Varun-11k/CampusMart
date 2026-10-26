@@ -1,0 +1,187 @@
+﻿function publicUser(user) {
+    const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
+
+    return {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        college: user.college,
+        course: user.course || '',
+        branch: user.branch || '',
+        academicYear: user.academicYear || '',
+        profileImage: user.profileImage,
+        themePreference: user.themePreference || 'light',
+        isVerified: user.isVerified,
+        hasPassword: (user.authProviders || ['password']).includes('password'),
+        role: user.role === 'admin' && adminEmail === user.email.toLowerCase() ? 'admin' : 'student',
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+    }
+}
+
+function sendFieldErrors(res, errors) {
+    return res.status(400).json({ success: false, message: 'Please check the highlighted fields.', errors })
+}
+
+async function verifyGoogleCredentialForUser(credential, user) {
+    if (typeof credential !== 'string' || !process.env.GOOGLE_CLIENT_ID) return false
+    try {
+        const ticket = await new OAuth2Client(process.env.GOOGLE_CLIENT_ID).verifyIdToken({
+            idToken: credential,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        })
+        const claims = ticket.getPayload()
+        return Boolean(
+            claims?.email_verified === true
+            && GOOGLE_ISSUERS.has(claims.iss)
+            && claims.sub === user.googleId
+            && claims.email?.toLowerCase() === user.email.toLowerCase(),
+        )
+    } catch {
+        return false
+    }
+}
+
+function validateRegistration(body) {
+    const errors = validateProfileFields(body)
+    if (!validateEmail(body.email)) errors.email = 'Enter a valid email address.'
+    if (!validatePassword(body.password)) errors.password = `Use at least ${PASSWORD_MIN_LENGTH} characters and no more than ${PASSWORD_MAX_BYTES} UTF-8 bytes.`
+    if (body.confirmPassword !== undefined && body.password !== body.confirmPassword) {
+        errors.confirmPassword = 'Passwords do not match.'
+    }
+    return errors
+}
+
+async function sendVerification(user) {
+    try {
+        const configured = getMailConfig()
+        if (!configured || !process.env.FRONTEND_URL) return false
+        const token = await issueToken(user._id, 'email-verification', 24 * 60 * 60 * 1000)
+        const link = buildFrontendLink('/verify-email', token)
+        if (!link) return false
+        await sendAccountEmail({
+            email: user.email,
+            subject: 'Verify your CampusMart email',
+            text: `Hi ${user.name},\n\nVerify your email address using this single-use link (expires in 24 hours):\n${link}\n\nIf you did not create a CampusMart account, you can ignore this email.`,
+        })
+        return true
+    } catch {
+        console.error('CampusMart verification email delivery failed')
+        return false
+    }
+}
+
+async function register(req, res, next) {
+    try {
+        const body = req.body || {}
+        const allowedFields = new Set(['name', 'email', 'password', 'confirmPassword', 'college'])
+        if (Object.keys(body).some((field) => !allowedFields.has(field))) {
+            return res.status(400).json({ success: false, message: 'Unsupported registration fields.' })
+        }
+
+        const errors = validateRegistration(body)
+        if (Object.keys(errors).length) return sendFieldErrors(res, errors)
+
+        const normalizedEmail = body.email.trim().toLowerCase()
+        const existingUser = await User.findOne({ email: normalizedEmail }).select('_id')
+        if (existingUser) return res.status(409).json({ success: false, message: 'Email is already registered', errors: { email: 'This email already has an account.' } })
+
+        const password = await bcrypt.hash(body.password, 12)
+        const user = await User.create({
+            name: body.name.trim(),
+            email: normalizedEmail,
+            password,
+            college: body.college.trim(),
+            authProviders: ['password'],
+        })
+        const token = createToken(user._id.toString(), user.tokenVersion || 0)
+        const verificationEmailSent = await sendVerification(user)
+
+        res.status(201).json({ success: true, token, user: publicUser(user), verificationEmailSent })
+    } catch (error) {
+        if (error.code === 11000) {
+            return res.status(409).json({ success: false, message: 'Email is already registered', errors: { email: 'This email already has an account.' } })
+        }
+        next(error)
+    }
+}
+
+async function login(req, res, next) {
+    try {
+        const { email, password, rememberMe = false } = req.body || {}
+        if (!validateEmail(email) || typeof password !== 'string' || !password || typeof rememberMe !== 'boolean') {
+            return sendFieldErrors(res, {
+                ...(!validateEmail(email) ? { email: 'Enter a valid email address.' } : {}),
+                ...(typeof password !== 'string' || !password ? { password: 'Enter your password.' } : {}),
+                ...(typeof rememberMe !== 'boolean' ? { rememberMe: 'Invalid sign-in preference.' } : {}),
+            })
+        }
+
+        if (Buffer.byteLength(password) > 1024) {
+            return res.status(401).json({ success: false, message: 'Invalid email or password' })
+        }
+        const user = await User.findOne({ email: email.trim().toLowerCase() })
+            .select('+password +googleId +authProviders +tokenVersion +deactivatedAt')
+        const passwordMatches = user && !user.deactivatedAt && user.password
+            ? await bcrypt.compare(password, user.password)
+            : false
+
+        if (!passwordMatches) {
+            return res.status(401).json({ success: false, message: 'Invalid email or password' })
+        }
+
+        const token = createToken(user._id.toString(), user.tokenVersion || 0, rememberMe)
+        res.json({ success: true, token, user: publicUser(user) })
+    } catch (error) {
+        next(error)
+    }
+}
+
+async function googleLogin(req, res, next) {
+    try {
+        const clientId = process.env.GOOGLE_CLIENT_ID
+        if (!clientId) return res.status(503).json({ success: false, message: 'Google sign-in is not configured.' })
+
+        const credential = req.body?.credential
+        if (typeof credential !== 'string' || credential.length > 5000) {
+            return res.status(400).json({ success: false, message: 'A valid Google credential is required.' })
+        }
+
+        const client = new OAuth2Client(clientId)
+        let ticket
+        try {
+            ticket = await client.verifyIdToken({ idToken: credential, audience: clientId })
+        } catch {
+            return res.status(401).json({ success: false, message: 'Google sign-in could not be verified.' })
+        }
+        const claims = ticket.getPayload()
+        if (!claims || !claims.sub || !validateEmail(claims.email) || claims.email_verified !== true || !GOOGLE_ISSUERS.has(claims.iss)) {
+            return res.status(401).json({ success: false, message: 'Google could not verify this account.' })
+        }
+
+        const email = claims.email.trim().toLowerCase()
+        let user = await User.findOne({ email }).select('+googleId +tokenVersion +deactivatedAt +authProviders')
+        if (user?.deactivatedAt) return res.status(403).json({ success: false, message: 'This account has been deactivated.' })
+
+        if (user) {
+            if (user.googleId && user.googleId !== claims.sub) {
+                return res.status(409).json({ success: false, message: 'This email is linked to a different Google account.' })
+            }
+            if (!user.googleId) {
+                user.googleId = claims.sub
+                user.isVerified = true
+                user.authProviders = [...new Set([...(user.authProviders || ['password']), 'google'])]
+                await user.save()
+            }
+        } else {
+            const college = req.body?.college
+            const profileErrors = validateProfileFields({ name: claims.name || '', college })
+            if (profileErrors.college) {
+                return res.status(400).json({ success: false, message: 'Add your college to finish creating your account.', errors: { college: profileErrors.college } })
+            }
+            user = await User.create({
+                name: ((claims.name || email.split('@')[0]).trim().slice(0, 80) || 'CampusMart Student'),
+                email,
+                googleId: claims.sub,
+                college: college.trim(),
+                isVerified: true,

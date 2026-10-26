@@ -1,0 +1,165 @@
+    } catch (error) { next(error) }
+}
+async function toggleLike(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const post = await CampusFeedPost.findById(req.params.id).select('+likes')
+        if (!post || post.status !== 'active') return res.status(404).json({ success: false, message: 'Post not found' })
+        const userId = req.user._id.toString()
+        const index = post.likes.findIndex((id) => id.toString() === userId)
+        if (index >= 0) post.likes.splice(index, 1)
+        else post.likes.push(req.user._id)
+        await post.save()
+        if (index < 0 && post.author.toString() !== userId) {
+            try { await createAndEmitNotification({ recipient: post.author, type: 'system', title: 'New like', message: `${req.user.name} liked your post.`, }) } catch {}
+        }
+        res.json({ success: true, likeCount: post.likes.length, likedByMe: index < 0 })
+    } catch (error) { next(error) }
+}
+
+async function toggleSave(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const post = await CampusFeedPost.findById(req.params.id).select('+saves')
+        if (!post || post.status !== 'active') return res.status(404).json({ success: false, message: 'Post not found' })
+        const userId = req.user._id.toString()
+        const index = post.saves.findIndex((id) => id.toString() === userId)
+        if (index >= 0) post.saves.splice(index, 1)
+        else post.saves.push(req.user._id)
+        await post.save()
+        res.json({ success: true, saveCount: post.saves.length, savedByMe: index < 0 })
+    } catch (error) { next(error) }
+}
+
+async function votePoll(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const optionId = req.body?.optionId
+        if (!mongoose.isValidObjectId(optionId)) return res.status(400).json({ success: false, message: 'Invalid option ID' })
+        const post = await CampusFeedPost.findById(req.params.id).select('+likes +saves')
+        if (!post || post.status !== 'active' || !post.poll) return res.status(404).json({ success: false, message: 'Poll not found' })
+        const option = post.poll.options.id(optionId)
+        if (!option) return res.status(404).json({ success: false, message: 'Option not found' })
+        // remove previous vote
+        for (const opt of post.poll.options) {
+            opt.votes = opt.votes.filter((id) => id.toString() !== req.user._id.toString())
+        }
+        option.votes.push(req.user._id)
+        await post.save()
+        const populated = await CampusFeedPost.findById(post._id).populate('author', 'name college profileImage').select('+likes +saves')
+        res.json({ success: true, post: serializePost(populated, req.user._id) })
+    } catch (error) { next(error) }
+}
+async function getPost(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const post = await CampusFeedPost.findById(req.params.id).populate('author', 'name college profileImage').select('+likes +saves')
+        if (!post || post.status !== 'active') return res.status(404).json({ success: false, message: 'Post not found' })
+        res.json({ success: true, post: serializePost(post, req.user?._id) })
+    } catch (error) { next(error) }
+}
+
+async function updatePost(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const post = await CampusFeedPost.findById(req.params.id).select('+likes +saves')
+        if (!post || post.status !== 'active') return res.status(404).json({ success: false, message: 'Post not found' })
+        if (post.author.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'You can only edit your own posts' })
+        const body = req.body || {}
+        if (Object.prototype.hasOwnProperty.call(body, 'content')) {
+            const content = String(body.content || '').trim()
+            if (!content && !(post.media && post.media.length)) return res.status(400).json({ success: false, message: 'Content is required' })
+            if (content.length > MAX_CONTENT) return res.status(400).json({ success: false, message: `Content must be ${MAX_CONTENT} characters or fewer` })
+            post.content = content
+        }
+        if (body.category) {
+            const allowedCategories = ['general', 'update', 'meme', 'food', 'sports', 'study', 'event', 'club', 'marketplace', 'lostfound', 'question']
+            if (!allowedCategories.includes(body.category)) return res.status(400).json({ success: false, message: 'Invalid category' })
+            post.category = body.category
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'hashtags')) post.hashtags = normalizeHashtags(parseJsonField(body.hashtags, body.hashtags))
+        if (Object.prototype.hasOwnProperty.call(body, 'campusTag')) post.campusTag = String(body.campusTag || '').trim().slice(0, 120)
+        if (Object.prototype.hasOwnProperty.call(body, 'visibility')) post.visibility = body.visibility === 'public' ? 'public' : 'campus'
+        await post.save()
+        const populated = await CampusFeedPost.findById(post._id).populate('author', 'name college profileImage').select('+likes +saves')
+        res.json({ success: true, post: serializePost(populated, req.user._id) })
+    } catch (error) { next(error) }
+}
+
+async function deletePost(req, res, next) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid post ID' })
+        const post = await CampusFeedPost.findById(req.params.id)
+        if (!post || post.status !== 'active') return res.status(404).json({ success: false, message: 'Post not found' })
+        if (post.author.toString() !== req.user._id.toString() && req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'You can only delete your own posts' })
+        post.status = 'removed'
+        await post.save()
+        await CampusFeedComment.updateMany({ post: post._id }, { $set: { status: 'removed' } })
+        res.json({ success: true, message: 'Post deleted' })
+    } catch (error) { next(error) }
+}
+async function createPost(req, res, next) {
+    try {
+        const userId = req.user._id
+        const body = req.body || {}
+        const content = typeof body.content === 'string' ? body.content.trim() : ''
+        const category = body.category || 'general'
+        const allowedCategories = ['general', 'update', 'meme', 'food', 'sports', 'study', 'event', 'club', 'marketplace', 'lostfound', 'question']
+        if (!allowedCategories.includes(category)) return res.status(400).json({ success: false, message: 'Invalid category' })
+        const hashtags = normalizeHashtags(parseJsonField(body.hashtags, body.hashtags))
+        const pollInput = parseJsonField(body.poll, null)
+        const files = req.files || []
+        if (files.length > MAX_MEDIA) return res.status(400).json({ success: false, message: `You can upload up to ${MAX_MEDIA} media files` })
+        if (!content && files.length === 0 && !pollInput) return res.status(400).json({ success: false, message: 'Add text, media, or a poll before posting' })
+        if (content.length > MAX_CONTENT) return res.status(400).json({ success: false, message: `Content must be ${MAX_CONTENT} characters or fewer` })
+        const media = await uploadMediaFiles(files)
+        const hasVideo = media.some((item) => item.type === 'video')
+        const postType = body.postType && ['text', 'photo', 'video', 'poll', 'reel'].includes(body.postType)
+            ? body.postType
+            : (hasVideo ? (media.length === 1 && media[0].height > media[0].width ? 'reel' : 'video') : (media.length ? 'photo' : (pollInput ? 'poll' : 'text')))
+        let poll = undefined
+        if (pollInput && typeof pollInput === 'object') {
+            const question = String(pollInput.question || '').trim().slice(0, 300)
+            const options = Array.isArray(pollInput.options) ? pollInput.options.map((option) => String(option).trim()).filter(Boolean).slice(0, 6) : []
+            if (options.length < 2) return res.status(400).json({ success: false, message: 'Polls need at least two options' })
+            poll = { question, options: options.map((text) => ({ text, votes: [] })), expiresAt: pollInput.expiresAt ? new Date(pollInput.expiresAt) : null }
+        }
+        const post = await CampusFeedPost.create({
+            author: userId,
+            content,
+            postType,
+            category,
+            hashtags,
+            campusTag: String(body.campusTag || '').trim().slice(0, 120),
+            visibility: body.visibility === 'public' ? 'public' : 'campus',
+            media,
+            poll,
+        })
+        const populated = await CampusFeedPost.findById(post._id).populate('author', 'name college profileImage').select('+likes +saves')
+        res.status(201).json({ success: true, post: serializePost(populated, userId) })
+    } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message })
+        next(error)
+    }
+}
+function serializeComment(comment, userId) {
+    const data = typeof comment.toObject === 'function' ? comment.toObject() : { ...comment }
+    const likes = Array.isArray(data.likes) ? data.likes : []
+    const author = data.author && typeof data.author === 'object' ? data.author : null
+    return {
+        _id: data._id,
+        post: data.post,
+        parentComment: data.parentComment || null,
+        content: data.content,
+        author: author ? { _id: author._id, name: author.name, college: author.college, profileImage: author.profileImage } : data.author,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        likeCount: likes.length,
+        likedByMe: Boolean(userId && likes.some((id) => id.toString() === userId.toString())),
+        isMine: Boolean(userId && data.author && (data.author._id || data.author).toString() === userId.toString()),
+    }
+}
+
+async function listPosts(req, res, next) {
+    try {
+        const userId = req.user?._id
