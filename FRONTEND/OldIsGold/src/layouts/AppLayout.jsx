@@ -1,4 +1,4 @@
-﻿import { NavLink, Outlet, Link } from 'react-router-dom'
+import { NavLink, Outlet, Link } from 'react-router-dom'
 import SearchBar from '../components/SearchBar'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -7,6 +7,7 @@ import NotificationBell from '../components/NotificationBell'
 import PwaInstallControl from '../components/PwaInstallControl'
 import NetworkStatusBanner from '../components/NetworkStatusBanner'
 import PageMetadata from '../components/PageMetadata'
+import JoinCampusMartPrompt from '../components/JoinCampusMartPrompt'
 import { authSecurityApi } from '../services/api'
 
 const campusLinks = [
@@ -105,6 +106,7 @@ function AppLayout() {
     </header>
     <main className="site-main">
       <PageMetadata />
+      <JoinCampusMartPrompt />
       <div className="site-status-row"><NetworkStatusBanner /><PwaInstallControl /></div>
       <Outlet />
     </main>
